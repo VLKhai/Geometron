@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Geometron</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: #111;
+      color: #ddd;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: #181818;
+    }
+    #ui {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .panel {
+      background: rgba(20, 20, 20, 0.86);
+      border: 1px solid #444;
+      padding: 8px;
+      border-radius: 6px;
+      min-width: 220px;
+      pointer-events: auto;
+    }
+    .row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
+    button {
+      background: #2a2a2a;
+      color: #ddd;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 6px 8px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    button:hover {
+      background: #363636;
+    }
+    button.active {
+      border-color: #87c7ff;
+      color: #87c7ff;
+    }
+    #shapeCanvas {
+      width: 192px;
+      height: 192px;
+      border: 1px solid #555;
+      image-rendering: pixelated;
+      display: block;
+      margin-top: 6px;
+      background: #111;
+    }
+    #infoText {
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: pre-line;
+    }
+    #menuScreen {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #menuScreen[data-bg="menu"] {
+      background:
+        radial-gradient(circle at 15% 20%, rgba(255, 190, 120, 0.22), transparent 35%),
+        radial-gradient(circle at 85% 15%, rgba(120, 200, 255, 0.2), transparent 34%),
+        radial-gradient(circle at 50% 85%, rgba(140, 255, 180, 0.14), transparent 38%),
+        linear-gradient(140deg, #17120f 0%, #111a1f 52%, #0f1218 100%);
+    }
+    #menuScreen[data-bg="game"] {
+      background: rgba(0, 0, 0, 0.28);
+    }
+    #menuCard {
+      min-width: 320px;
+      max-width: 90vw;
+      background: rgba(16, 20, 22, 0.95);
+      border: 1px solid #4f6a77;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+      text-align: center;
+    }
+    #menuTitle {
+      font-size: 28px;
+      letter-spacing: 0.08em;
+      color: #a9dff5;
+      margin-bottom: 8px;
+    }
+    #menuSub {
+      font-size: 14px;
+      color: #c6d7de;
+      margin-bottom: 14px;
+      white-space: pre-line;
+    }
+    #menuActions {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    #menuActions button {
+      min-width: 110px;
+      font-size: 13px;
+      border-color: #5d7784;
+      background: #24323a;
+    }
+    #menuActions button:hover {
+      background: #2f434e;
+    }
+    #saveListPanel {
+      margin-top: 14px;
+      text-align: left;
+      background: rgba(10, 14, 16, 0.55);
+      border: 1px solid #3f5561;
+      border-radius: 8px;
+      padding: 8px;
+    }
+    #saveListTitle {
+      font-size: 12px;
+      color: #9fc3d4;
+      margin-bottom: 6px;
+      letter-spacing: 0.03em;
+    }
+    #saveList {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .save-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .save-meta {
+      font-size: 12px;
+      color: #c6d7de;
+    }
+    .save-actions {
+      display: flex;
+      gap: 4px;
+    }
+    .save-actions button {
+      min-width: 54px;
+      font-size: 11px;
+      padding: 4px 6px;
+    }
+    .save-empty {
+      font-size: 12px;
+      color: #97aab3;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <div id="menuScreen">
+    <div id="menuCard">
+      <div id="menuTitle">GEOMETRON</div>
+      <div id="menuSub">Build. Produce. Defend.
+Survive incoming waves.</div>
+      <div id="menuActions">
+        <button id="startGameBtn">Load Game</button>
+        <button id="restartGameBtn">Restart</button>
+        <button id="startSandboxBtn">Sandbox</button>
+        <button id="resumeGameBtn">Resume</button>
+        <button id="menuHomeBtn">Return Menu</button>
+        <button id="optionsBtn">Options</button>
+        <button id="backBtn">Back</button>
+      </div>
+      <div id="saveListPanel">
+        <div id="saveListTitle">Saves (Max 3)</div>
+        <div id="saveList"></div>
+      </div>
+    </div>
+  </div>
+  <div id="ui">
+    <div class="panel" id="topBar">
+      <div id="resourceText">Copper: 0 | Coal: 0 | Gold: 0</div>
+      <div id="waveText">Wave: 1</div>
+      <div id="statusText">Build: None</div>
+      <div class="row" id="buildButtons">
+        <button data-build="Assembler">Assembler</button>
+        <button data-build="TurretFoundry">Turret Foundry</button>
+        <button data-build="VehicleBay">Vehicle Bay</button>
+        <button data-build="MiniCore">Mini-Core</button>
+      </div>
+    </div>
+    <div class="panel" id="selectedPanel">
+      <div id="selectedTitle">Selected: None</div>
+      <div id="infoText">No structure selected.</div>
+      <div class="row">
+        <button id="assignBlueprintBtn">Assign Blueprint</button>
+      </div>
+    </div>
+    <div class="panel" id="shapePanel">
+      <div>Shape Editor</div>
+      <div id="shapeMeta">Grid: 3x3</div>
+      <canvas id="shapeCanvas" width="192" height="192"></canvas>
+      <div class="row">
+        <button id="upgradeGridBtn">Upgrade Grid</button>
+        <button id="clearShapeBtn">Clear</button>
+      </div>
+    </div>
+    <div class="panel" id="sandboxPanel" style="display:none;">
+      <div>Sandbox</div>
+      <div class="row">
+        <button id="startWaveBtn">Start Wave</button>
+        <button id="toggleInfiniteHealthBtn">Infinite Core HP: ON</button>
+        <button id="toggleInfiniteResourcesBtn">Infinite Resources: ON</button>
+      </div>
+    </div>
+  </div>
+  <script src="main.js"></script>
+</body>
+</html>
