@@ -4,6 +4,9 @@ const WORLD_H = 64;
 const MAX_UNITS = 100;
 const MAX_STRUCTURES = 20;
 const MAX_BLUEPRINT_GRID = 8;
+const MINER_SNAP_RADIUS = 24;
+const BOSS_SLAM_WINDUP = 1.15;
+const BOSS_SLAM_RADIUS = 72;
 const CELL_ROLES = { 1: "armor", 2: "weapon", 3: "sensor", 4: "engine" };
 const SOCKET_MODULES = ["weapon", "shield", "support"];
 const UPGRADE_CARDS = {
@@ -341,6 +344,8 @@ class Enemy extends Entity {
       this.cooldown = 1.25;
       this.radius = 23;
       this.color = "#cc83f3";
+      this.bossWindup = 0;
+      this.bossAttackPoint = null;
     } else {
       this.maxHp = 70;
       this.hp = 70;
@@ -358,6 +363,30 @@ class Enemy extends Entity {
     const target = game.findEnemyTarget(this);
     if (!target) return;
     const d = this.distTo(target);
+    if (this.archetype === "boss") {
+      if (this.bossWindup > 0) {
+        this.bossWindup -= dt;
+        if (this.bossWindup <= 0 && this.bossAttackPoint) {
+          const victims = [game.mainCore, ...game.structures, ...game.turrets, ...game.units];
+          for (const victim of victims) {
+            if (!victim.dead && Math.hypot(victim.x - this.bossAttackPoint.x, victim.y - this.bossAttackPoint.y) <= BOSS_SLAM_RADIUS) {
+              victim.takeDamage(this.damage);
+            }
+          }
+          this.bossWindup = 0;
+          this.bossAttackPoint = null;
+          this.attackTimer = this.cooldown;
+        }
+        return;
+      }
+      if (d > this.range * 0.95) {
+        this.moveToward(target.x, target.y, dt);
+      } else if (this.attackTimer <= 0) {
+        this.bossAttackPoint = { x: target.x, y: target.y };
+        this.bossWindup = BOSS_SLAM_WINDUP;
+      }
+      return;
+    }
     if (d > this.range * 0.95) {
       this.moveToward(target.x, target.y, dt);
     } else if (this.attackTimer <= 0) {
@@ -413,6 +442,32 @@ class Enemy extends Entity {
       ctx.stroke();
     }
     drawHpBar(ctx, this.hp, this.maxHp, 22, -20);
+    ctx.restore();
+  }
+
+  renderBossWarning(ctx) {
+    if (this.archetype !== "boss" || this.bossWindup <= 0 || !this.bossAttackPoint) return;
+    const { x, y } = this.bossAttackPoint;
+    const progress = Math.max(0, 1 - this.bossWindup / BOSS_SLAM_WINDUP);
+    const pulse = .5 + Math.sin(performance.now() / 90) * .12;
+    ctx.save();
+    ctx.fillStyle = `rgba(255,82,96,${pulse * .16})`;
+    ctx.beginPath(); ctx.arc(x, y, BOSS_SLAM_RADIUS, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "rgba(255,103,112,.94)";
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([8, 5]);
+    ctx.beginPath(); ctx.arc(x, y, BOSS_SLAM_RADIUS, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = `rgba(255,220,218,${.58 + progress * .35})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 11, y); ctx.lineTo(x + 11, y);
+    ctx.moveTo(x, y - 11); ctx.lineTo(x, y + 11);
+    ctx.stroke();
+    ctx.fillStyle = "#ffdadd";
+    ctx.font = "bold 10px 'DM Mono', monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(`⚠ SLAM · ${Math.max(0, this.bossWindup).toFixed(1)}s`, x, y - BOSS_SLAM_RADIUS - 10);
     ctx.restore();
   }
 }
@@ -564,9 +619,12 @@ class Game {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.keys = {};
-    this.mouse = { x: 0, y: 0, worldX: 0, worldY: 0 };
+    this.mouse = { x: 0, y: 0, worldX: 0, worldY: 0, pointerType: "mouse" };
     this.camera = { x: 0, y: 0 };
     this.cameraSpeed = 320;
+    this.activePointerId = null;
+    this.activePointerType = "mouse";
+    this.touchPanning = false;
 
     this.resources = { copper: 240, coal: 90, gold: 140 };
     this.mainCore = new Core((WORLD_W * TILE_SIZE) / 2, (WORLD_H * TILE_SIZE) / 2, true);
@@ -580,7 +638,10 @@ class Game {
     this.wave = 1;
     this.waveTimer = this.getWaveInterval(this.wave);
     this.waveActive = false;
+    this.hasPlacedFirstMiner = false;
     this.enemiesAtWaveStart = 0;
+    this.waveStartSnapshot = null;
+    this.lastWaveRecap = null;
     this.elapsed = 0;
     this.toastTimer = 0;
     this.gameOver = false;
@@ -610,6 +671,7 @@ class Game {
     this.selectedStructure = null;
     this.selectedUnit = null;
     this.selectedUnits = [];
+    this.selectedNode = null;
     this.testTargets = [];
 
     this.scenario = "frontier";
@@ -715,28 +777,45 @@ class Game {
       this.keys[e.code] = false;
     });
 
-    this.canvas.addEventListener("mousemove", (e) => {
+    this.canvas.addEventListener("pointermove", (e) => {
+      const previousX = this.mouse.x;
+      const previousY = this.mouse.y;
       this.updateMouseFromEvent(e);
-      if (this.leftMouseDown) {
-        this.dragCurrent.x = this.mouse.x;
-        this.dragCurrent.y = this.mouse.y;
-        this.dragCurrent.worldX = this.mouse.worldX;
-        this.dragCurrent.worldY = this.mouse.worldY;
-        const dx = this.dragCurrent.x - this.dragStart.x;
-        const dy = this.dragCurrent.y - this.dragStart.y;
-        if (Math.hypot(dx, dy) > 6) this.dragSelecting = true;
+      if (!this.leftMouseDown) return;
+      const dx = this.mouse.x - previousX;
+      const dy = this.mouse.y - previousY;
+      const travel = Math.hypot(this.mouse.x - this.dragStart.x, this.mouse.y - this.dragStart.y);
+      if (travel > 8 && this.activePointerType === "touch" && !this.moveCommandMode && !this.buildMode) {
+        this.touchPanning = true;
+      } else if (travel > 6 && this.activePointerType !== "touch") {
+        this.dragSelecting = true;
       }
+      if (this.touchPanning) {
+        this.camera.x -= dx;
+        this.camera.y -= dy;
+        this.clampCamera();
+        this.updateMouseFromEvent(e);
+      }
+      this.dragCurrent.x = this.mouse.x;
+      this.dragCurrent.y = this.mouse.y;
+      this.dragCurrent.worldX = this.mouse.worldX;
+      this.dragCurrent.worldY = this.mouse.worldY;
     });
 
-    this.canvas.addEventListener("mousedown", (e) => {
+    this.canvas.addEventListener("pointerdown", (e) => {
       this.updateMouseFromEvent(e);
-      if (e.button === 2) {
+      if (e.pointerType === "mouse" && e.button === 2) {
         this.handleRemoveClick();
         return;
       }
       if (e.button !== 0) return;
+      e.preventDefault();
+      this.activePointerId = e.pointerId;
+      this.activePointerType = e.pointerType || "mouse";
+      this.canvas.setPointerCapture?.(e.pointerId);
       this.leftMouseDown = true;
       this.dragSelecting = false;
+      this.touchPanning = false;
       this.dragStart.x = this.mouse.x;
       this.dragStart.y = this.mouse.y;
       this.dragStart.worldX = this.mouse.worldX;
@@ -747,20 +826,28 @@ class Game {
       this.dragCurrent.worldY = this.mouse.worldY;
     });
 
-    this.canvas.addEventListener("mouseup", (e) => {
+    this.canvas.addEventListener("pointerup", (e) => {
       this.updateMouseFromEvent(e);
-      if (e.button !== 0) return;
-      if (!this.leftMouseDown) return;
+      if (e.pointerId !== this.activePointerId || e.button !== 0 || !this.leftMouseDown) return;
       this.leftMouseDown = false;
-      if (this.dragSelecting) {
+      if (!this.touchPanning && this.dragSelecting) {
         this.selectUnitsInDrag();
-      } else if (this.moveCommandMode && this.selectedUnits.length > 0) {
+      } else if (!this.touchPanning && this.moveCommandMode && this.selectedUnits.length > 0) {
         this.issueMoveCommand(this.mouse.worldX, this.mouse.worldY);
         this.moveCommandMode = false;
-      } else {
+      } else if (!this.touchPanning) {
         this.handleWorldClick();
       }
       this.dragSelecting = false;
+      this.touchPanning = false;
+      this.activePointerId = null;
+    });
+
+    this.canvas.addEventListener("pointercancel", () => {
+      this.leftMouseDown = false;
+      this.dragSelecting = false;
+      this.touchPanning = false;
+      this.activePointerId = null;
     });
 
     this.canvas.addEventListener("contextmenu", (e) => {
@@ -771,8 +858,22 @@ class Game {
       btn.addEventListener("click", () => {
         const v = btn.getAttribute("data-build");
         this.buildMode = this.buildMode === v ? null : v;
+        this.moveCommandMode = false;
         this.syncButtons();
+        if (this.buildMode === "MiniCore") this.notify("⛏ Tap a glowing deposit");
       });
+    });
+
+    document.getElementById("moveCommandBtn").addEventListener("click", () => {
+      if (this.selectedUnits.length === 0) return;
+      this.moveCommandMode = !this.moveCommandMode;
+      if (this.moveCommandMode) {
+        this.buildMode = null;
+        this.syncButtons();
+        this.notify("➤ Tap a destination");
+      } else {
+        this.notify("× Move cancelled");
+      }
     });
 
     document.getElementById("assignBlueprintBtn").addEventListener("click", () => {
@@ -988,6 +1089,7 @@ class Game {
     this.mouse.y = e.clientY - rect.top;
     this.mouse.worldX = this.mouse.x + this.camera.x;
     this.mouse.worldY = this.mouse.y + this.camera.y;
+    this.mouse.pointerType = e.pointerType || "mouse";
   }
 
   setMenu(open, title = "GEOMETRON", sub = "", showStart = true, showRestart = false, bgMode = "menu") {
@@ -1227,18 +1329,26 @@ class Game {
     this.wave = 1;
     this.waveTimer = this.getWaveInterval(this.wave);
     this.waveActive = false;
+    this.hasPlacedFirstMiner = false;
     this.enemiesAtWaveStart = 0;
+    this.waveStartSnapshot = null;
+    this.lastWaveRecap = null;
     this.upgradeLevels = { plating: 0, fabrication: 0, survey: 0, overclock: 0 };
     this.pendingUpgrade = false;
     this.upgradeChosen = false;
     this.selectedUpgrade = null;
     this.upgradeChoices = [];
+    document.getElementById("intermissionPanel").style.display = "none";
+    document.getElementById("upgradeChoices").replaceChildren();
+    document.getElementById("deployWaveBtn").disabled = true;
+    document.getElementById("deployWaveBtn").textContent = "Select upgrade";
     this.nextDoctrine = "balanced";
     this.activeContract = "none";
     this.contractBaseline = null;
     this.elapsed = 0;
     this.buildMode = null;
     this.selectedStructure = null;
+    this.selectedNode = null;
     if (this.selectedUnit) this.selectedUnit.controlled = false;
     this.selectedUnit = null;
     this.selectedUnits = [];
@@ -1331,13 +1441,18 @@ class Game {
         speed: e.speed,
         cooldown: e.cooldown,
         dead: e.dead,
-        attackTimer: e.attackTimer
+        attackTimer: e.attackTimer,
+        bossWindup: e.bossWindup || 0,
+        bossAttackPoint: e.bossAttackPoint ? { ...e.bossAttackPoint } : null
       })),
       resourceNodes: this.resourceNodes.map((n) => ({ ...n })),
       wave: this.wave,
       waveTimer: this.waveTimer,
       waveActive: this.waveActive,
+      hasPlacedFirstMiner: this.hasPlacedFirstMiner,
       enemiesAtWaveStart: this.enemiesAtWaveStart,
+      waveStartSnapshot: this.waveStartSnapshot ? { ...this.waveStartSnapshot } : null,
+      lastWaveRecap: this.lastWaveRecap ? { ...this.lastWaveRecap, rewards: { ...this.lastWaveRecap.rewards } } : null,
       pendingUpgrade: this.pendingUpgrade,
       upgradeChosen: this.upgradeChosen,
       selectedUpgrade: this.selectedUpgrade,
@@ -1423,6 +1538,8 @@ class Game {
       enemy.cooldown = e.cooldown;
       enemy.dead = e.dead;
       enemy.attackTimer = e.attackTimer || 0;
+      enemy.bossWindup = Math.max(0, e.bossWindup || 0);
+      enemy.bossAttackPoint = e.bossAttackPoint ? { ...e.bossAttackPoint } : null;
       return enemy;
     });
 
@@ -1431,7 +1548,17 @@ class Game {
     this.wave = state.wave;
     this.waveTimer = state.waveTimer;
     this.waveActive = !!state.waveActive;
+    this.hasPlacedFirstMiner = typeof state.hasPlacedFirstMiner === "boolean"
+      ? state.hasPlacedFirstMiner
+      : this.wave > 1 || this.waveActive || this.structures.some((structure) => structure.type === "MiniCore");
     this.enemiesAtWaveStart = state.enemiesAtWaveStart || state.enemies.length;
+    this.waveStartSnapshot = state.waveStartSnapshot ? { ...state.waveStartSnapshot } : null;
+    if (!this.waveStartSnapshot && state.waveActive) {
+      this.waveStartSnapshot = { coreHp: this.mainCore.hp, unitCount: this.units.length, structureCount: this.structures.length + this.turrets.length };
+    }
+    this.lastWaveRecap = state.lastWaveRecap && state.lastWaveRecap.rewards
+      ? { ...state.lastWaveRecap, rewards: { ...state.lastWaveRecap.rewards } }
+      : null;
     this.pendingUpgrade = !!state.pendingUpgrade;
     this.upgradeChosen = !!state.upgradeChosen;
     this.selectedUpgrade = UPGRADE_CARDS[state.selectedUpgrade] ? state.selectedUpgrade : null;
@@ -1458,6 +1585,7 @@ class Game {
     document.getElementById("contractSelect").value = this.activeContract;
 
     this.selectedStructure = null;
+    this.selectedNode = null;
     if (this.selectedUnit) this.selectedUnit.controlled = false;
     this.selectedUnit = null;
     this.selectedUnits = [];
@@ -1476,6 +1604,7 @@ class Game {
     this.updateSandboxUiVisibility();
     document.getElementById("intermissionPanel").style.display = this.pendingUpgrade ? "block" : "none";
     this.renderUpgradeChoices();
+    this.renderWaveRecap();
     this.drawShapeEditor();
     this.clampCamera();
     return true;
@@ -1615,6 +1744,8 @@ class Game {
     this.selectedUnit = next;
     if (this.selectedUnit) this.selectedUnit.controlled = true;
     this.selectedUnits = this.selectedUnit ? [this.selectedUnit] : [];
+    this.selectedStructure = null;
+    this.selectedNode = null;
     if (this.selectedUnit) this.completeTutorialAction("unit");
   }
 
@@ -1625,6 +1756,9 @@ class Game {
     const maxY = Math.max(this.dragStart.worldY, this.dragCurrent.worldY);
 
     this.selectedUnits = this.units.filter((u) => u.x >= minX && u.x <= maxX && u.y >= minY && u.y <= maxY);
+    this.selectedStructure = null;
+    this.selectedNode = null;
+    this.moveCommandMode = false;
     if (this.selectedUnit && !this.selectedUnits.includes(this.selectedUnit)) {
       this.selectedUnit.controlled = false;
       this.selectedUnit = null;
@@ -1661,6 +1795,8 @@ class Game {
       this.selectedUnit.controlled = true;
       this.selectedUnits = [clickedUnit];
       this.selectedStructure = null;
+      this.selectedNode = null;
+      this.moveCommandMode = false;
       this.completeTutorialAction("unit");
       return;
     }
@@ -1671,14 +1807,28 @@ class Game {
       this.selectedUnit = null;
       this.selectedUnits = [];
       this.selectedStructure = clickedStructure;
+      this.selectedNode = null;
+      this.moveCommandMode = false;
       return;
     }
 
     if (!this.buildMode) {
+      const clickedNode = this.findNodeNear(wx, wy, this.mouse.pointerType === "touch" ? 30 : 22);
+      if (clickedNode) {
+        if (this.selectedUnit) this.selectedUnit.controlled = false;
+        this.selectedUnit = null;
+        this.selectedUnits = [];
+        this.selectedStructure = null;
+        this.selectedNode = clickedNode;
+        this.moveCommandMode = false;
+        return;
+      }
       if (this.selectedUnit) this.selectedUnit.controlled = false;
       this.selectedUnit = null;
       this.selectedUnits = [];
       this.selectedStructure = null;
+      this.selectedNode = null;
+      this.moveCommandMode = false;
       return;
     }
 
@@ -1693,9 +1843,9 @@ class Game {
     }
 
     if (this.buildMode === "MiniCore") {
-      const node = this.findNodeNear(x, y, 20);
+      const node = this.findNodeNear(x, y, MINER_SNAP_RADIUS);
       if (!node) {
-        this.notify("⛏ Place on a deposit");
+        this.notify("⛏ Tap a glowing deposit");
         return;
       }
       if (node.occupied) {
@@ -1714,9 +1864,15 @@ class Game {
       mini.type = "MiniCore";
       this.structures.push(mini);
       node.occupied = true;
+      if (!this.hasPlacedFirstMiner) {
+        this.hasPlacedFirstMiner = true;
+        this.waveTimer = this.isSandbox ? 0 : this.getWaveInterval(this.wave);
+      }
       this.selectedStructure = mini;
       this.selectedUnit = null;
       this.selectedUnits = [];
+      this.selectedNode = null;
+      this.moveCommandMode = false;
       this.notify(`✓ ${node.type.toUpperCase()} · +${mini.resourceRate.toFixed(1)}/s`);
       this.completeTutorialAction("miner");
       return;
@@ -1744,6 +1900,8 @@ class Game {
     this.selectedStructure = s;
     this.selectedUnit = null;
     this.selectedUnits = [];
+    this.selectedNode = null;
+    this.moveCommandMode = false;
     this.notify(`✓ ${this.buildMode} · ◇ synced`);
     if (this.buildMode === "Assembler") this.completeTutorialAction("assembler");
   }
@@ -1929,19 +2087,21 @@ class Game {
   }
 
   findStructureAt(x, y) {
-    if (Math.hypot(x - this.mainCore.x, y - this.mainCore.y) <= 24) return this.mainCore;
+    const touchPadding = this.mouse.pointerType === "touch" ? 10 : 0;
+    if (Math.hypot(x - this.mainCore.x, y - this.mainCore.y) <= 24 + touchPadding) return this.mainCore;
     for (const s of this.structures) {
-      if (Math.hypot(x - s.x, y - s.y) <= 20) return s;
+      if (Math.hypot(x - s.x, y - s.y) <= 20 + touchPadding) return s;
     }
     for (const t of this.turrets) {
-      if (Math.hypot(x - t.x, y - t.y) <= 18) return t;
+      if (Math.hypot(x - t.x, y - t.y) <= 18 + touchPadding) return t;
     }
     return null;
   }
 
   findUnitAt(x, y) {
+    const touchPadding = this.mouse.pointerType === "touch" ? 12 : 4;
     for (const u of this.units) {
-      if (Math.hypot(x - u.x, y - u.y) <= u.radius + 4) return u;
+      if (Math.hypot(x - u.x, y - u.y) <= u.radius + touchPadding) return u;
     }
     return null;
   }
@@ -1998,12 +2158,12 @@ class Game {
       this.saveCurrentGame();
     }
 
-    if (!this.isSandbox && !this.waveActive && !this.pendingUpgrade) {
+    if (!this.isSandbox && this.hasPlacedFirstMiner && !this.waveActive && !this.pendingUpgrade) {
       this.waveTimer -= dt;
     }
-    if (!this.isSandbox && !this.waveActive && !this.pendingUpgrade && this.waveTimer <= 0) {
+    if (!this.isSandbox && this.hasPlacedFirstMiner && !this.waveActive && !this.pendingUpgrade && this.waveTimer <= 0) {
       this.spawnWave(this.wave);
-    this.notify(`⚠ W${this.wave} inbound${this.wave % 5 === 0 ? " · ★" : ""}`);
+      this.notify(`⚠ W${this.wave} inbound${this.wave % 5 === 0 ? " · ★" : ""}`);
     }
 
     this.mainCore.update(dt, this);
@@ -2027,6 +2187,21 @@ class Game {
       this.resources.coal += reward.coal;
       this.resources.gold += reward.gold;
       const contractOutcome = this.resolveActiveContract();
+      const waveStart = this.waveStartSnapshot || {
+        coreHp: this.mainCore.hp,
+        unitCount: this.units.length,
+        structureCount: this.structures.length + this.turrets.length
+      };
+      this.lastWaveRecap = {
+        wave: clearedWave,
+        enemiesDefeated: this.enemiesAtWaveStart,
+        coreDamage: Math.max(0, Math.round(waveStart.coreHp - this.mainCore.hp)),
+        unitLosses: Math.max(0, waveStart.unitCount - this.units.length),
+        structureLosses: Math.max(0, waveStart.structureCount - this.structures.length - this.turrets.length),
+        rewards: { ...reward },
+        contractOutcome
+      };
+      this.waveStartSnapshot = null;
       this.wave += 1;
       this.waveActive = false;
       this.notify(`✓ W${clearedWave} · +${reward.copper}◉ +${reward.gold}◆${contractOutcome ? ` · ${contractOutcome}` : ""}`);
@@ -2121,6 +2296,11 @@ class Game {
     }
     this.waveActive = true;
     this.enemiesAtWaveStart = this.enemies.length;
+    this.waveStartSnapshot = {
+      coreHp: this.mainCore.hp,
+      unitCount: this.units.length,
+      structureCount: this.structures.length + this.turrets.length
+    };
     this.waveTimer = 0;
   }
 
@@ -2207,14 +2387,20 @@ class Game {
       `<span class="resource-chip"><i class="resource-dot gold-dot"></i>${gold}<span style="color:#859da4">AU</span></span>`;
     document.getElementById("resourceText").title = "◉ Copper · ⬟ Coal · ◆ Gold";
 
-    const waveText = this.pendingUpgrade
+    const bossWarning = this.waveActive ? this.enemies.find((enemy) => enemy.archetype === "boss" && enemy.bossWindup > 0) : null;
+    const waveText = bossWarning
+      ? `⚠ SLAM · ${bossWarning.bossWindup.toFixed(1)}s`
+      : this.pendingUpgrade
       ? `◇ ${String(this.wave).padStart(2, "0")} READY`
       : this.waveActive
       ? `⚔ ${String(this.wave).padStart(2, "0")} · ◉ ${this.enemies.length}`
+      : !this.isSandbox && !this.hasPlacedFirstMiner
+      ? "⛏ MINER"
       : `⚔ ${String(this.wave).padStart(2, "0")} · ${this.isSandbox ? "Ⅱ" : `◷ ${Math.max(0, Math.ceil(this.waveTimer))}`}`;
     const waveEl = document.getElementById("waveText");
     waveEl.textContent = this.waveActive && this.wave % 5 === 0 ? `${waveText} · ★` : waveText;
-    waveEl.title = this.pendingUpgrade ? "Choose your next upgrade" : this.waveActive ? `${this.enemies.length} hostiles remain` : this.isSandbox ? "Wave ready" : `Next wave in ${Math.max(0, Math.ceil(this.waveTimer))} seconds`;
+    waveEl.classList.toggle("boss-warning-active", !!bossWarning);
+    waveEl.title = bossWarning ? "Boss slam incoming · move units outside the red target ring" : this.pendingUpgrade ? "Choose your next upgrade" : this.waveActive ? `${this.enemies.length} hostiles remain` : !this.isSandbox && !this.hasPlacedFirstMiner ? "Place a Miner Core to start the countdown" : this.isSandbox ? "Wave ready" : `Next wave in ${Math.max(0, Math.ceil(this.waveTimer))} seconds`;
     const statusEl = document.getElementById("statusText");
     statusEl.textContent = `${this.isSandbox ? "∞" : "⌂"} · ${this.units.length + this.turrets.length}/${MAX_UNITS}${this.buildMode ? ` · ⊕ ${this.buildMode}` : ""}${this.moveCommandMode ? " · ➜" : ""}`;
     statusEl.title = `${this.isSandbox ? "Sandbox" : "Frontier"} · ${this.units.length + this.turrets.length}/${MAX_UNITS} units${this.buildMode ? ` · building ${this.buildMode}` : ""}${this.moveCommandMode ? " · choose destination" : ""}`;
@@ -2225,13 +2411,15 @@ class Game {
       ? "◇ PREP"
       : this.waveActive
       ? `⚔ ${this.wave}${this.wave % 5 === 0 ? " · ★" : ""}`
+      : !this.isSandbox && !this.hasPlacedFirstMiner
+      ? "⛏ PLACE MINER"
       : `${({ frontier: "FRONTIER", shattered: "SHATTERED", rich: "RICH", ion: "ION" })[this.scenario] || "FRONTIER"}${this.isSandbox ? " · LAUNCH" : ""}`);
     objective.children[0].style.color = coreRatio < .3 ? "#ff958d" : coreRatio < .6 ? "#e7c47e" : "#a6bdc3";
     objective.children[1].innerHTML = this.moveCommandMode
       ? "<kbd>M</kbd> ➜ CLICK · <kbd>ESC</kbd> Ⅱ"
       : "<kbd>WASD</kbd> ◉ · <kbd>Q</kbd> ⇄ · <kbd>M</kbd> ➜ · <kbd>ESC</kbd> Ⅱ";
     objective.children[1].title = this.moveCommandMode ? "Click a destination · Escape pauses" : "Pan · steer · cycle unit · move squad · pause";
-    const progress = this.pendingUpgrade ? 100 : this.waveActive
+    const progress = this.pendingUpgrade ? 100 : !this.isSandbox && !this.hasPlacedFirstMiner ? 0 : this.waveActive
       ? Math.max(0, Math.min(100, 100 * (1 - this.enemies.length / Math.max(1, this.enemiesAtWaveStart))))
       : (this.isSandbox ? 0 : 100 * (1 - this.waveTimer / this.getWaveInterval(this.wave)));
     document.getElementById("waveProgress").style.width = `${progress}%`;
@@ -2239,6 +2427,11 @@ class Game {
     const selTitle = document.getElementById("selectedTitle");
     const info = document.getElementById("infoText");
     const assignBtn = document.getElementById("assignBlueprintBtn");
+    const moveBtn = document.getElementById("moveCommandBtn");
+    moveBtn.style.display = this.selectedUnits.length > 0 ? "inline-grid" : "none";
+    moveBtn.classList.toggle("active", this.moveCommandMode);
+    moveBtn.title = this.moveCommandMode ? "Tap a destination or cancel move" : "Move selected units";
+    moveBtn.setAttribute("aria-label", this.moveCommandMode ? "Choose a move destination" : "Move selected units");
 
     if (this.selectedStructure) {
       const structure = this.selectedStructure;
@@ -2260,6 +2453,15 @@ class Game {
         const state = structure.running ? `↻ ${Math.round(structure.productionProgress / duration * 100)}%` : structure.batchPaid ? "◷ QUEUED" : "Ⅱ IDLE";
         info.textContent = `♥ ${Math.floor(structure.hp)}/${Math.floor(structure.maxHp)} · ${state}\n▦ ${stats.cellCount} · ⚔ ${stats.damage.toFixed(0)} · ◎ ${stats.range.toFixed(0)}\n◇ ${Object.entries(structure.modules || {}).filter(([, type]) => type).length} · ◉ ${cost.copper} · ⬟ ${cost.coal} · ◆ ${cost.gold}`;
       }
+    } else if (this.selectedNode) {
+      const node = this.selectedNode;
+      const icon = node.type === "copper" ? "◉" : node.type === "coal" ? "⬟" : "◆";
+      const baseRate = ({ copper: 2.4, coal: 2.0, gold: 1.3 })[node.type] || 1;
+      const output = baseRate * this.getResourceRateMultiplier(node.x, node.y);
+      selTitle.textContent = `${node.type.toUpperCase()} DEPOSIT`;
+      assignBtn.disabled = true;
+      assignBtn.style.display = "none";
+      info.textContent = `${icon} RESOURCE NODE\n⛏ +${output.toFixed(1)}/s PER MINER\n${node.occupied ? "● OCCUPIED" : "○ AVAILABLE"}`;
     } else if (this.selectedUnit) {
       const unit = this.selectedUnit;
       const stats = unit.stats;
@@ -2468,8 +2670,26 @@ class Game {
     document.getElementById("doctrineSelect").value = "balanced";
     document.getElementById("contractSelect").value = "none";
     this.renderUpgradeChoices();
+    this.renderWaveRecap();
     document.getElementById("intermissionPanel").style.display = "block";
     this.syncSandboxUi();
+  }
+
+  renderWaveRecap() {
+    const recap = this.lastWaveRecap;
+    const panel = document.getElementById("waveRecap");
+    panel.hidden = !recap;
+    if (!recap) return;
+    document.getElementById("recapHeading").textContent = `✓ W${recap.wave} CLEARED`;
+    document.getElementById("recapEnemies").textContent = String(recap.enemiesDefeated);
+    document.getElementById("recapCoreDamage").textContent = String(recap.coreDamage);
+    document.getElementById("recapUnitLosses").textContent = String(recap.unitLosses);
+    document.getElementById("recapStructureLosses").textContent = String(recap.structureLosses);
+    const rewards = recap.rewards || {};
+    document.getElementById("recapRewards").textContent = `LOOT  +${rewards.copper || 0}◉  +${rewards.coal || 0}⬟  +${rewards.gold || 0}◆`;
+    const contract = document.getElementById("recapContract");
+    contract.textContent = recap.contractOutcome || "";
+    contract.hidden = !recap.contractOutcome;
   }
 
   renderUpgradeChoices() {
@@ -2603,6 +2823,7 @@ class Game {
     for (const e of this.enemies) e.render(ctx);
     for (const target of this.testTargets) target.render(ctx);
     for (const p of this.projectiles) p.render(ctx);
+    for (const e of this.enemies) e.renderBossWarning(ctx);
 
     if (this.selectedStructure) {
       const s = this.selectedStructure;
@@ -2647,10 +2868,11 @@ class Game {
       const py = gy * TILE_SIZE + TILE_SIZE / 2;
       const cost = this.getBuildCost(this.buildMode);
       const affordable = this.canAfford(cost);
-      const node = this.buildMode === "MiniCore" ? this.findNodeNear(px, py, 20) : null;
+      const underCap = this.structures.length < MAX_STRUCTURES;
+      const node = this.buildMode === "MiniCore" ? this.findNodeNear(px, py, MINER_SNAP_RADIUS) : null;
       const valid = this.buildMode === "MiniCore"
-        ? !!node && !node.occupied && affordable
-        : affordable && this.structures.length < MAX_STRUCTURES && !this.isBlockedPlacement(px, py, 24);
+        ? !!node && !node.occupied && affordable && underCap
+        : affordable && underCap && !this.isBlockedPlacement(px, py, 24);
       const tint = valid ? "#6ce0ba" : "#ff847c";
       ctx.fillStyle = valid ? "rgba(108,224,186,.12)" : "rgba(255,132,124,.12)";
       ctx.fillRect(px - 16, py - 16, 32, 32);
@@ -2660,7 +2882,10 @@ class Game {
       ctx.fillStyle = tint;
       ctx.font = "10px 'DM Mono', monospace";
       ctx.textAlign = "center";
-      ctx.fillText(valid ? "READY" : !affordable ? "NEED RESOURCES" : "BLOCKED", px, py + 31);
+      const placementLabel = this.buildMode === "MiniCore"
+        ? valid ? "PLACE HERE" : !underCap ? "STRUCTURE CAP" : !affordable ? "NEED RESOURCES" : node?.occupied ? "OCCUPIED" : "NEED DEPOSIT"
+        : valid ? "READY" : !underCap ? "STRUCTURE CAP" : !affordable ? "NEED RESOURCES" : "BLOCKED";
+      ctx.fillText(placementLabel, px, py + 31);
     }
 
     ctx.restore();
@@ -2743,6 +2968,16 @@ class Game {
     for (const n of this.resourceNodes) {
       const color = n.type === "coal" ? "#a4b7bd" : n.type === "copper" ? "#df9363" : "#e9c66f";
       ctx.save();
+      if (this.buildMode === "MiniCore" && !n.occupied) {
+        const snapX = Math.floor(n.x / TILE_SIZE) * TILE_SIZE + TILE_SIZE / 2;
+        const snapY = Math.floor(n.y / TILE_SIZE) * TILE_SIZE + TILE_SIZE / 2;
+        ctx.fillStyle = "rgba(108,224,186,.055)";
+        ctx.strokeStyle = "rgba(108,224,186,.58)";
+        ctx.setLineDash([4, 4]);
+        ctx.fillRect(snapX - TILE_SIZE / 2, snapY - TILE_SIZE / 2, TILE_SIZE, TILE_SIZE);
+        ctx.strokeRect(snapX - TILE_SIZE / 2, snapY - TILE_SIZE / 2, TILE_SIZE, TILE_SIZE);
+        ctx.setLineDash([]);
+      }
       ctx.shadowColor = color;
       ctx.shadowBlur = n.occupied ? 14 : 8;
       ctx.fillStyle = n.occupied ? "#15313a" : "#14272e";
@@ -2767,6 +3002,21 @@ class Game {
       ctx.font = "8px 'DM Mono', monospace";
       ctx.textAlign = "center";
       ctx.fillText(n.type.toUpperCase(), n.x, n.y + 28);
+      const hovered = !this.buildMode && this.mouse.pointerType !== "touch" && this.findNodeNear(this.mouse.worldX, this.mouse.worldY, 20) === n;
+      if (hovered) {
+        const baseRate = ({ copper: 2.4, coal: 2.0, gold: 1.3 })[n.type] || 1;
+        const rate = (baseRate * this.getResourceRateMultiplier(n.x, n.y)).toFixed(1);
+        const detail = `+${rate}/s · ${n.occupied ? "OCCUPIED" : "FREE"}`;
+        ctx.font = "9px 'DM Mono', monospace";
+        const width = ctx.measureText(detail).width + 12;
+        ctx.fillStyle = "rgba(5,15,21,.94)";
+        ctx.fillRect(n.x - width / 2, n.y + 33, width, 17);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(n.x - width / 2, n.y + 33, width, 17);
+        ctx.fillStyle = "#dff5f2";
+        ctx.fillText(detail, n.x, n.y + 45);
+      }
       ctx.restore();
     }
   }
