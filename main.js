@@ -5,10 +5,29 @@ const MAX_UNITS = 100;
 const MAX_STRUCTURES = 20;
 const MAX_BLUEPRINT_GRID = 8;
 const MINER_SNAP_RADIUS = 24;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 2;
 const BOSS_SLAM_WINDUP = 1.15;
 const BOSS_SLAM_RADIUS = 72;
 const CELL_ROLES = { 1: "armor", 2: "weapon", 3: "sensor", 4: "engine" };
 const SOCKET_MODULES = ["weapon", "shield", "support"];
+const KEYBIND_ACTIONS = [
+  { id: "panUp", label: "Pan camera up", code: "KeyW" },
+  { id: "panLeft", label: "Pan camera left", code: "KeyA" },
+  { id: "panDown", label: "Pan camera down", code: "KeyS" },
+  { id: "panRight", label: "Pan camera right", code: "KeyD" },
+  { id: "steerUp", label: "Steer unit up", code: "ArrowUp" },
+  { id: "steerLeft", label: "Steer unit left", code: "ArrowLeft" },
+  { id: "steerDown", label: "Steer unit down", code: "ArrowDown" },
+  { id: "steerRight", label: "Steer unit right", code: "ArrowRight" },
+  { id: "cycleUnit", label: "Cycle controllable unit", code: "KeyQ" },
+  { id: "moveCommand", label: "Order squad to move", code: "KeyE" },
+  { id: "zoomIn", label: "Zoom in", code: "Equal" },
+  { id: "zoomOut", label: "Zoom out", code: "Minus" },
+  { id: "resetZoom", label: "Reset zoom", code: "Digit0" },
+  { id: "pause", label: "Pause / resume", code: "Escape" }
+];
+const DEFAULT_KEYBINDS = Object.fromEntries(KEYBIND_ACTIONS.map(({ id, code }) => [id, code]));
 const UPGRADE_CARDS = {
   plating: { title: "Plating", icon: "⛨", description: "+120 Core HP" },
   fabrication: { title: "Fabrication", icon: "⚙", description: "+12% build speed" },
@@ -24,42 +43,59 @@ const SCENARIOS = {
 const TUTORIAL_STEPS = [
   {
     title: "Welcome, Commander",
-    copy: "Collect ◉ Cu · ⬟ Co · ◆ Au. Build a Miner, shape a drone, survive Wave 1.",
+    copy: "Gather copper, coal, and gold. Build a Miner, design a Blueprint, then defend the Core through Wave 1.",
+    terms: ["copper", "coal", "gold", "Miner", "Blueprint", "Core", "Wave 1"],
+    target: "#tutorialPrimaryBtn",
     action: "start"
   },
   {
     title: "Secure a mineral deposit",
-    copy: "⛏ Place on a glowing deposit. It mines automatically.",
+    copy: "Choose the highlighted Miner tool, then place it on a glowing deposit. It harvests that resource over time.",
+    terms: ["Miner", "deposit", "resource"],
+    iconFrom: '#buildButtons [data-build="MiniCore"] .build-icon',
+    target: '#buildButtons [data-build="MiniCore"]',
     action: "miner"
   },
   {
     title: "Start drone production",
-    copy: "⬡ Place on open ground. It prints drones when paid.",
+    copy: "Choose the highlighted Assembler and place it on open ground. It prints drones from your current Blueprint.",
+    terms: ["Assembler", "drones", "Blueprint"],
+    iconFrom: '#buildButtons [data-build="Assembler"] .build-icon',
+    target: '#buildButtons [data-build="Assembler"]',
     action: "assembler"
   },
   {
     title: "Shape your machine",
-    copy: "Pick a role, click a connected cell: ⛨ HP · ⚔ damage · ◎ range · ➤ speed. Add socket modules.",
+    copy: "In the Workshop, pick Armor, Weapon, Sensor, or Engine, then add a connected cell to tune your Blueprint.",
+    terms: ["Workshop", "Armor", "Weapon", "Sensor", "Engine", "Blueprint"],
+    target: "#shapePanel",
     action: "shape"
   },
   {
     title: "Apply the blueprint",
-    copy: "New factories inherit this design. Existing factory? Select it and press ⇪.",
+    copy: "With your Assembler selected, press the glowing ⇪ button to apply this Blueprint. New factories inherit future designs automatically.",
+    terms: ["Assembler", "Blueprint"],
+    target: "#assignBlueprintBtn",
     action: "blueprint"
   },
   {
     title: "Select a drone",
-    copy: "Click a drone or press Q. Arrow keys steer; drones attack in range.",
+    copy: "Wait for the Assembler to print a drone, then click its glowing ring. Press {cycleUnit} to cycle drones; arrow keys steer the selected unit.",
+    terms: ["Assembler", "drone", "{cycleUnit}", "arrow keys"],
+    target: "#selectedPanel",
     action: "unit"
   },
   {
     title: "Send your squad",
-    copy: "Select a squad · press M · click a destination. Drag to multi-select.",
+    copy: "Select your drone, press {moveCommand} or the glowing ➤ button, then click a destination to order the squad.",
+    terms: ["drone", "{moveCommand}", "destination", "squad"],
+    target: "#moveCommandBtn",
     action: "command"
   },
   {
     title: "Hold the first assault",
-    copy: "♥ Keep the Core online. Clear waves for resource rewards.",
+    copy: "Hold the Core and survive Wave 1. Clear the assault to earn resources and choose an Upgrade.",
+    terms: ["Core", "Wave 1", "Upgrade"],
     action: "wave"
   }
 ];
@@ -220,10 +256,10 @@ class Unit extends Entity {
     if (this.controlled) {
       let mx = 0;
       let my = 0;
-      if (game.keys["ArrowUp"]) my -= 1;
-      if (game.keys["ArrowDown"]) my += 1;
-      if (game.keys["ArrowLeft"]) mx -= 1;
-      if (game.keys["ArrowRight"]) mx += 1;
+      if (game.keys.steerUp) my -= 1;
+      if (game.keys.steerDown) my += 1;
+      if (game.keys.steerLeft) mx -= 1;
+      if (game.keys.steerRight) mx += 1;
       if (mx !== 0 || my !== 0) {
         const m = Math.hypot(mx, my);
         this.x += (mx / m) * this.speed * dt;
@@ -445,11 +481,11 @@ class Enemy extends Entity {
     ctx.restore();
   }
 
-  renderBossWarning(ctx) {
+  renderBossWarning(ctx, reducedMotion = false) {
     if (this.archetype !== "boss" || this.bossWindup <= 0 || !this.bossAttackPoint) return;
     const { x, y } = this.bossAttackPoint;
     const progress = Math.max(0, 1 - this.bossWindup / BOSS_SLAM_WINDUP);
-    const pulse = .5 + Math.sin(performance.now() / 90) * .12;
+    const pulse = reducedMotion ? .5 : .5 + Math.sin(performance.now() / 90) * .12;
     ctx.save();
     ctx.fillStyle = `rgba(255,82,96,${pulse * .16})`;
     ctx.beginPath(); ctx.arc(x, y, BOSS_SLAM_RADIUS, 0, Math.PI * 2); ctx.fill();
@@ -620,11 +656,13 @@ class Game {
     this.ctx = canvas.getContext("2d");
     this.keys = {};
     this.mouse = { x: 0, y: 0, worldX: 0, worldY: 0, pointerType: "mouse" };
-    this.camera = { x: 0, y: 0 };
+    this.camera = { x: 0, y: 0, zoom: 1 };
     this.cameraSpeed = 320;
     this.activePointerId = null;
     this.activePointerType = "mouse";
     this.touchPanning = false;
+    this.touchPointers = new Map();
+    this.pinchState = null;
 
     this.resources = { copper: 240, coal: 90, gold: 140 };
     this.mainCore = new Core((WORLD_W * TILE_SIZE) / 2, (WORLD_H * TILE_SIZE) / 2, true);
@@ -656,6 +694,13 @@ class Game {
     this.autoSaveTimer = 0;
     this.saveStorageKey = "geometron_saves_v1";
     this.maxSaveSlots = 3;
+    this.settingsStorageKey = "geometron_settings_v1";
+    this.settings = { zoom: 1, panSpeed: 320, reducedMotion: false };
+    this.keybinds = { ...DEFAULT_KEYBINDS };
+    this.rebindingAction = null;
+    this.keys = {};
+    this.ignoreKeyUntilUp = null;
+    this.loadSettings();
     this.blueprintStorageKey = "geometron_blueprints_v1";
     this.tutorialStorageKey = "geometron_tutorial_completed_v1";
     try {
@@ -762,26 +807,108 @@ class Game {
 
   bindEvents() {
     window.addEventListener("keydown", (e) => {
-      this.keys[e.code] = true;
-      if (e.code === "Escape") {
+      if (this.rebindingAction) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (["ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "AltLeft", "AltRight", "MetaLeft", "MetaRight", "Unidentified", "Process"].includes(e.code)) {
+          this.renderKeybindSettings("Choose a key, not a modifier by itself.");
+          return;
+        }
+        const action = this.rebindingAction;
+        const assignedAction = KEYBIND_ACTIONS.find((item) => item.id !== action && this.keybinds[item.id] === e.code);
+        if (assignedAction) {
+          this.rebindingAction = null;
+          this.ignoreKeyUntilUp = e.code;
+          this.renderKeybindSettings(`${this.formatKeybind(e.code)} is already assigned to ${assignedAction.label}. Change that binding first.`);
+          return;
+        }
+        this.keybinds[action] = e.code;
+        this.rebindingAction = null;
+        this.ignoreKeyUntilUp = e.code;
+        this.saveSettings();
+        this.renderKeybindSettings(`${KEYBIND_ACTIONS.find((item) => item.id === action)?.label} is now ${this.formatKeybind(e.code)}.`);
+        if (this.tutorialActive) this.renderTutorialStep();
+        return;
+      }
+
+      if (this.ignoreKeyUntilUp === e.code) {
+        e.preventDefault();
+        return;
+      }
+      if (e.code === "Escape" && document.fullscreenElement) {
+        e.preventDefault();
+        document.exitFullscreen().catch(() => {});
+        return;
+      }
+      const action = this.getBoundAction(e.code);
+      if (action === "pause" || (e.code === "Escape" && ["options", "glossary"].includes(this.menuMode))) {
         e.preventDefault();
         this.handleEscapeToggle();
         return;
       }
-      if (e.code === "KeyQ") this.pickNextControllableUnit();
-      if (e.code === "KeyM" && this.selectedUnits.length > 0) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.target?.matches?.("input, select, textarea")) return;
+      if (action) {
+        e.preventDefault();
+        this.keys[action] = true;
+      }
+      if (action === "zoomIn") {
+        e.preventDefault();
+        this.zoomBy(1.1);
+      }
+      if (action === "zoomOut") {
+        e.preventDefault();
+        this.zoomBy(1 / 1.1);
+      }
+      if (action === "resetZoom") {
+        e.preventDefault();
+        this.setZoomAt(1);
+      }
+      if (action === "cycleUnit") this.pickNextControllableUnit();
+      if (action === "moveCommand" && this.selectedUnits.length > 0) {
         this.moveCommandMode = true;
       }
     });
     window.addEventListener("keyup", (e) => {
-      this.keys[e.code] = false;
+      if (this.ignoreKeyUntilUp === e.code) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        this.ignoreKeyUntilUp = null;
+        return;
+      }
+      if (this.rebindingAction) return;
+      const action = this.getBoundAction(e.code);
+      if (action) this.keys[action] = false;
+    });
+    window.addEventListener("blur", () => {
+      this.keys = {};
+      this.ignoreKeyUntilUp = null;
     });
 
     this.canvas.addEventListener("pointermove", (e) => {
       const previousX = this.mouse.x;
       const previousY = this.mouse.y;
       this.updateMouseFromEvent(e);
-      if (!this.leftMouseDown) return;
+      if (e.pointerType === "touch" && this.touchPointers.has(e.pointerId)) {
+        this.touchPointers.set(e.pointerId, { x: this.mouse.x, y: this.mouse.y });
+        if (this.pinchState && this.touchPointers.size >= 2) {
+          const points = [...this.touchPointers.values()].slice(0, 2);
+          const distance = Math.max(1, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y));
+          const midX = (points[0].x + points[1].x) / 2;
+          const midY = (points[0].y + points[1].y) / 2;
+          const zoom = clampZoom(this.pinchState.zoom * distance / this.pinchState.distance);
+          this.camera.zoom = zoom;
+          this.settings.zoom = zoom;
+          this.camera.x = this.pinchState.worldX - midX / zoom;
+          this.camera.y = this.pinchState.worldY - midY / zoom;
+          this.clampCamera();
+          this.mouse.worldX = this.camera.x + this.mouse.x / zoom;
+          this.mouse.worldY = this.camera.y + this.mouse.y / zoom;
+          this.syncSettingsUI();
+          return;
+        }
+      }
+      if (!this.leftMouseDown || e.pointerId !== this.activePointerId) return;
       const dx = this.mouse.x - previousX;
       const dy = this.mouse.y - previousY;
       const travel = Math.hypot(this.mouse.x - this.dragStart.x, this.mouse.y - this.dragStart.y);
@@ -791,8 +918,8 @@ class Game {
         this.dragSelecting = true;
       }
       if (this.touchPanning) {
-        this.camera.x -= dx;
-        this.camera.y -= dy;
+        this.camera.x -= dx / this.camera.zoom;
+        this.camera.y -= dy / this.camera.zoom;
         this.clampCamera();
         this.updateMouseFromEvent(e);
       }
@@ -810,9 +937,29 @@ class Game {
       }
       if (e.button !== 0) return;
       e.preventDefault();
+      this.canvas.setPointerCapture?.(e.pointerId);
+      if (e.pointerType === "touch") {
+        this.touchPointers.set(e.pointerId, { x: this.mouse.x, y: this.mouse.y });
+        if (this.touchPointers.size >= 2) {
+          const points = [...this.touchPointers.values()].slice(0, 2);
+          const distance = Math.max(1, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y));
+          const midX = (points[0].x + points[1].x) / 2;
+          const midY = (points[0].y + points[1].y) / 2;
+          this.pinchState = {
+            distance,
+            zoom: this.camera.zoom,
+            worldX: this.camera.x + midX / this.camera.zoom,
+            worldY: this.camera.y + midY / this.camera.zoom
+          };
+          this.activePointerId = null;
+          this.leftMouseDown = false;
+          this.dragSelecting = false;
+          this.touchPanning = false;
+          return;
+        }
+      }
       this.activePointerId = e.pointerId;
       this.activePointerType = e.pointerType || "mouse";
-      this.canvas.setPointerCapture?.(e.pointerId);
       this.leftMouseDown = true;
       this.dragSelecting = false;
       this.touchPanning = false;
@@ -828,6 +975,29 @@ class Game {
 
     this.canvas.addEventListener("pointerup", (e) => {
       this.updateMouseFromEvent(e);
+      if (e.pointerType === "touch" && this.touchPointers.has(e.pointerId)) {
+        const wasPinching = !!this.pinchState;
+        this.touchPointers.delete(e.pointerId);
+        if (wasPinching) {
+          this.pinchState = null;
+          const remainingPointer = [...this.touchPointers.entries()][0];
+          this.activePointerId = remainingPointer ? remainingPointer[0] : null;
+          this.activePointerType = "touch";
+          this.leftMouseDown = !!remainingPointer;
+          this.dragSelecting = false;
+          this.touchPanning = !!remainingPointer;
+          if (remainingPointer) {
+            this.mouse.x = remainingPointer[1].x;
+            this.mouse.y = remainingPointer[1].y;
+            this.mouse.worldX = this.camera.x + this.mouse.x / this.camera.zoom;
+            this.mouse.worldY = this.camera.y + this.mouse.y / this.camera.zoom;
+            this.dragStart.x = remainingPointer[1].x;
+            this.dragStart.y = remainingPointer[1].y;
+          }
+          this.saveSettings();
+          return;
+        }
+      }
       if (e.pointerId !== this.activePointerId || e.button !== 0 || !this.leftMouseDown) return;
       this.leftMouseDown = false;
       if (!this.touchPanning && this.dragSelecting) {
@@ -843,7 +1013,15 @@ class Game {
       this.activePointerId = null;
     });
 
-    this.canvas.addEventListener("pointercancel", () => {
+    this.canvas.addEventListener("pointercancel", (e) => {
+      if (e.pointerType === "touch") {
+        this.touchPointers.delete(e.pointerId);
+        if (this.pinchState) {
+          this.saveSettings();
+          this.touchPointers.clear();
+        }
+        this.pinchState = null;
+      }
       this.leftMouseDown = false;
       this.dragSelecting = false;
       this.touchPanning = false;
@@ -853,6 +1031,39 @@ class Game {
     this.canvas.addEventListener("contextmenu", (e) => {
       e.preventDefault();
     });
+
+    this.canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const rect = this.canvas.getBoundingClientRect();
+      const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * this.canvas.height : e.deltaY;
+      this.setZoomAt(this.camera.zoom * Math.exp(-delta * .001), e.clientX - rect.left, e.clientY - rect.top);
+    }, { passive: false });
+
+    document.getElementById("zoomInBtn").addEventListener("click", () => this.zoomBy(1.12));
+    document.getElementById("zoomOutBtn").addEventListener("click", () => this.zoomBy(1 / 1.12));
+    document.getElementById("zoomReadout").addEventListener("click", () => this.setZoomAt(1));
+    document.getElementById("centerViewBtn").addEventListener("click", () => this.centerCameraOnCore());
+    document.getElementById("zoomSlider").addEventListener("input", (e) => {
+      this.setZoomAt(Number(e.target.value) / 100);
+    });
+    document.getElementById("panSpeedSlider").addEventListener("input", (e) => {
+      this.cameraSpeed = Math.max(100, Math.min(600, Number(e.target.value)));
+      this.settings.panSpeed = this.cameraSpeed;
+      this.syncSettingsUI();
+      this.saveSettings();
+    });
+    document.getElementById("reducedMotionToggle").addEventListener("change", (e) => {
+      this.settings.reducedMotion = e.target.checked;
+      this.applyMotionSetting();
+      this.saveSettings();
+    });
+    document.getElementById("resetOptionsBtn").addEventListener("click", () => this.resetSettings());
+    document.getElementById("cancelKeybindBtn").addEventListener("click", () => this.cancelKeybindCapture());
+    document.addEventListener("pointerdown", (e) => {
+      if (this.rebindingAction && !e.target.closest("#keybindList, #cancelKeybindBtn")) this.cancelKeybindCapture();
+    });
+    document.getElementById("fullscreenBtn").addEventListener("click", () => this.toggleFullscreen());
+    document.addEventListener("fullscreenchange", () => this.syncSettingsUI());
 
     document.querySelectorAll("#buildButtons button").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -1026,7 +1237,12 @@ class Game {
       this.showOptionsMenu();
     });
 
+    document.getElementById("glossaryBtn").addEventListener("click", () => {
+      this.showGlossaryMenu();
+    });
+
     document.getElementById("backBtn").addEventListener("click", () => {
+      this.cancelKeybindCapture();
       if (this.lastNonOptionsMenuMode === "pause") this.showPauseMenu();
       else if (this.lastNonOptionsMenuMode === "gameover") this.showGameOverMenu();
       else this.showMainMenu();
@@ -1087,9 +1303,176 @@ class Game {
     const rect = this.canvas.getBoundingClientRect();
     this.mouse.x = e.clientX - rect.left;
     this.mouse.y = e.clientY - rect.top;
-    this.mouse.worldX = this.mouse.x + this.camera.x;
-    this.mouse.worldY = this.mouse.y + this.camera.y;
+    this.mouse.worldX = this.camera.x + this.mouse.x / this.camera.zoom;
+    this.mouse.worldY = this.camera.y + this.mouse.y / this.camera.zoom;
     this.mouse.pointerType = e.pointerType || "mouse";
+  }
+
+  loadSettings() {
+    let stored = {};
+    try {
+      stored = JSON.parse(localStorage.getItem(this.settingsStorageKey) || "{}") || {};
+    } catch {
+      stored = {};
+    }
+    const systemMotionPreference = !!window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    this.settings.zoom = clampZoom(Number.isFinite(stored.zoom) ? stored.zoom : 1);
+    this.settings.panSpeed = Math.max(100, Math.min(600, Number.isFinite(stored.panSpeed) ? stored.panSpeed : 320));
+    this.settings.reducedMotion = typeof stored.reducedMotion === "boolean" ? stored.reducedMotion : systemMotionPreference;
+    const storedKeybinds = stored.keybinds;
+    const storedCodes = KEYBIND_ACTIONS.map(({ id }) => storedKeybinds?.[id]);
+    const validKeybinds = storedKeybinds && typeof storedKeybinds === "object"
+      && storedCodes.every((code) => typeof code === "string" && code.length > 0)
+      && new Set(storedCodes).size === KEYBIND_ACTIONS.length;
+    this.keybinds = validKeybinds ? { ...DEFAULT_KEYBINDS, ...storedKeybinds } : { ...DEFAULT_KEYBINDS };
+    this.settings.keybinds = { ...this.keybinds };
+    this.camera.zoom = this.settings.zoom;
+    this.cameraSpeed = this.settings.panSpeed;
+    this.applyMotionSetting();
+    this.syncSettingsUI();
+    this.renderKeybindSettings();
+  }
+
+  saveSettings() {
+    try {
+      this.settings.keybinds = { ...this.keybinds };
+      localStorage.setItem(this.settingsStorageKey, JSON.stringify(this.settings));
+    } catch {
+      // Settings still apply for the current session if browser storage is unavailable.
+    }
+  }
+
+  syncSettingsUI() {
+    const zoomSlider = document.getElementById("zoomSlider");
+    const panSpeedSlider = document.getElementById("panSpeedSlider");
+    const motionToggle = document.getElementById("reducedMotionToggle");
+    if (zoomSlider) zoomSlider.value = String(Math.round(this.camera.zoom * 100));
+    if (panSpeedSlider) panSpeedSlider.value = String(this.cameraSpeed);
+    const zoomValue = document.getElementById("zoomValue");
+    const panSpeedValue = document.getElementById("panSpeedValue");
+    const zoomReadout = document.getElementById("zoomReadout");
+    if (zoomValue) zoomValue.value = `${Math.round(this.camera.zoom * 100)}%`;
+    if (panSpeedValue) panSpeedValue.value = `${this.cameraSpeed} px/s`;
+    if (zoomReadout) {
+      zoomReadout.textContent = `${Math.round(this.camera.zoom * 100)}%`;
+      zoomReadout.setAttribute("aria-label", `Reset map zoom; current zoom ${Math.round(this.camera.zoom * 100)} percent`);
+    }
+    if (motionToggle) motionToggle.checked = this.settings.reducedMotion;
+    const fullscreenBtn = document.getElementById("fullscreenBtn");
+    if (fullscreenBtn) fullscreenBtn.textContent = document.fullscreenElement ? "⛶ Exit fullscreen" : "⛶ Fullscreen";
+    const panKeys = ["panUp", "panLeft", "panDown", "panRight"].map((action) => this.formatKeybind(action)).join("/");
+    document.querySelectorAll("[data-key-display]").forEach((element) => {
+      const action = element.getAttribute("data-key-display");
+      element.textContent = action === "pan" ? panKeys : this.formatKeybind(action);
+    });
+  }
+
+  getBoundAction(code) {
+    const exact = KEYBIND_ACTIONS.find(({ id }) => this.keybinds[id] === code);
+    if (exact) return exact.id;
+    if (this.keybinds.zoomIn === DEFAULT_KEYBINDS.zoomIn && code === "NumpadAdd") return "zoomIn";
+    if (this.keybinds.zoomOut === DEFAULT_KEYBINDS.zoomOut && code === "NumpadSubtract") return "zoomOut";
+    return null;
+  }
+
+  formatKeybind(action) {
+    const code = this.keybinds[action] || DEFAULT_KEYBINDS[action] || action;
+    const named = {
+      Equal: "+", Minus: "−", NumpadAdd: "Num +", NumpadSubtract: "Num −", Escape: "Esc",
+      ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→",
+      Space: "Space", Backspace: "⌫", Delete: "Del", Enter: "Enter", Tab: "Tab"
+    };
+    if (named[code]) return named[code];
+    if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+    if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+    if (/^Numpad[0-9]$/.test(code)) return `Num ${code.slice(6)}`;
+    return code;
+  }
+
+  renderKeybindSettings(hintText = "") {
+    const list = document.getElementById("keybindList");
+    if (!list) return;
+    list.replaceChildren();
+    for (const { id, label } of KEYBIND_ACTIONS) {
+      const row = document.createElement("div");
+      row.className = "keybind-row";
+      const name = document.createElement("span");
+      name.textContent = label;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.classList.toggle("listening", this.rebindingAction === id);
+      button.textContent = this.rebindingAction === id ? "Press a key…" : this.formatKeybind(id);
+      button.setAttribute("aria-label", `${label}: ${this.rebindingAction === id ? "waiting for a key" : this.formatKeybind(id)}`);
+      button.addEventListener("click", () => {
+        this.keys = {};
+        this.rebindingAction = id;
+        this.renderKeybindSettings();
+      });
+      row.append(name, button);
+      list.append(row);
+    }
+    const hint = document.getElementById("keybindHint");
+    const cancelBtn = document.getElementById("cancelKeybindBtn");
+    const action = KEYBIND_ACTIONS.find(({ id }) => id === this.rebindingAction);
+    if (hint) hint.textContent = hintText || (action
+      ? `Press a key for ${action.label}. Click Cancel to stop.`
+      : "Displayed keys are defaults. Click one to replace it; changes save in this browser. Use Defaults to reset them.");
+    if (cancelBtn) cancelBtn.style.display = action ? "block" : "none";
+  }
+
+  cancelKeybindCapture() {
+    if (!this.rebindingAction) return;
+    this.rebindingAction = null;
+    this.renderKeybindSettings("Key change cancelled. Your current bindings are unchanged.");
+  }
+
+  applyMotionSetting() {
+    document.body.classList.toggle("reduce-motion", this.settings.reducedMotion);
+  }
+
+  setZoomAt(nextZoom, screenX = this.canvas.width / 2, screenY = this.canvas.height / 2, persist = true) {
+    const zoom = clampZoom(nextZoom);
+    const oldZoom = this.camera.zoom || 1;
+    if (Math.abs(zoom - oldZoom) < .001) return;
+    const worldX = this.camera.x + screenX / oldZoom;
+    const worldY = this.camera.y + screenY / oldZoom;
+    this.camera.zoom = zoom;
+    this.settings.zoom = zoom;
+    this.camera.x = worldX - screenX / zoom;
+    this.camera.y = worldY - screenY / zoom;
+    this.clampCamera();
+    this.mouse.worldX = this.camera.x + this.mouse.x / zoom;
+    this.mouse.worldY = this.camera.y + this.mouse.y / zoom;
+    this.syncSettingsUI();
+    if (persist) this.saveSettings();
+  }
+
+  zoomBy(factor) {
+    this.setZoomAt(this.camera.zoom * factor);
+  }
+
+  resetSettings() {
+    this.settings = { zoom: 1, panSpeed: 320, reducedMotion: false };
+    this.keybinds = { ...DEFAULT_KEYBINDS };
+    this.rebindingAction = null;
+    this.camera.zoom = 1;
+    this.cameraSpeed = 320;
+    this.centerCameraOnCore();
+    this.applyMotionSetting();
+    this.syncSettingsUI();
+    this.renderKeybindSettings("Settings and keyboard controls restored to their defaults.");
+    this.saveSettings();
+    if (this.tutorialActive) this.renderTutorialStep();
+  }
+
+  async toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch {
+      this.notify("Fullscreen is not available in this browser");
+    }
+    this.syncSettingsUI();
   }
 
   setMenu(open, title = "GEOMETRON", sub = "", showStart = true, showRestart = false, bgMode = "menu") {
@@ -1102,10 +1485,13 @@ class Game {
     const resumeBtn = document.getElementById("resumeGameBtn");
     const menuHomeBtn = document.getElementById("menuHomeBtn");
     const optionsBtn = document.getElementById("optionsBtn");
+    const glossaryBtn = document.getElementById("glossaryBtn");
     const backBtn = document.getElementById("backBtn");
     const tutorialBtn = document.getElementById("tutorialBtn");
     const saveListPanel = document.getElementById("saveListPanel");
     const missionPicker = document.getElementById("missionPicker");
+    const optionsPanel = document.getElementById("optionsPanel");
+    const glossaryPanel = document.getElementById("glossaryPanel");
     menu.style.display = open ? "flex" : "none";
     menu.setAttribute("data-bg", bgMode);
     titleEl.textContent = title;
@@ -1118,8 +1504,11 @@ class Game {
     optionsBtn.style.display = "none";
     backBtn.style.display = "none";
     tutorialBtn.style.display = "none";
+    glossaryBtn.style.display = "none";
     saveListPanel.style.display = "none";
     missionPicker.style.display = "none";
+    optionsPanel.style.display = "none";
+    glossaryPanel.style.display = "none";
   }
 
   setMenuButtons(showStart, showSandboxStart, showRestart, showResume, showMenuHome, showOptions, showBack) {
@@ -1157,6 +1546,7 @@ class Game {
     const tutorialBtn = document.getElementById("tutorialBtn");
     tutorialBtn.textContent = this.tutorialCompleted ? "Replay Guide" : "Guide";
     tutorialBtn.style.display = "inline-block";
+    document.getElementById("glossaryBtn").style.display = "inline-block";
     document.getElementById("missionPicker").style.display = "block";
     document.getElementById("saveListPanel").style.display = "block";
     this.renderSaveList();
@@ -1166,17 +1556,28 @@ class Game {
     this.menuMode = "pause";
     this.lastNonOptionsMenuMode = "pause";
     document.getElementById("restartGameBtn").textContent = "Restart";
-    this.setMenu(true, "PAUSED", "Ⅱ  ·  ESC to resume", false, false, "game");
+    this.setMenu(true, "PAUSED", `Ⅱ  ·  ${this.formatKeybind("pause")} to resume`, false, false, "game");
     this.setMenuButtons(false, false, true, true, true, true, false);
+    document.getElementById("glossaryBtn").style.display = "inline-block";
     document.getElementById("resumeGameBtn").style.order = "-2";
     document.getElementById("restartGameBtn").style.order = "-1";
   }
 
   showOptionsMenu() {
     this.menuMode = "options";
-    const source = this.lastNonOptionsMenuMode === "pause" ? "PAUSED" : "HOME";
-    this.setMenu(true, "OPTIONS", "WASD pan · arrows steer · Q next · M move squad\nRight-click scraps  ·  " + source, false, false, this.lastNonOptionsMenuMode === "pause" ? "game" : "menu");
+    this.setMenu(true, "OPTIONS", "View and comfort settings.", false, false, this.lastNonOptionsMenuMode === "pause" || this.lastNonOptionsMenuMode === "gameover" ? "game" : "menu");
     this.setMenuButtons(false, false, false, false, false, false, true);
+    document.getElementById("optionsPanel").style.display = "block";
+    this.syncSettingsUI();
+    this.renderKeybindSettings();
+  }
+
+  showGlossaryMenu() {
+    this.menuMode = "glossary";
+    const bgMode = ["pause", "gameover"].includes(this.lastNonOptionsMenuMode) ? "game" : "menu";
+    this.setMenu(true, "FIELD GUIDE", "Game terms, systems, and symbols.", false, false, bgMode);
+    this.setMenuButtons(false, false, false, false, false, false, true);
+    document.getElementById("glossaryPanel").style.display = "block";
   }
 
   showGameOverMenu() {
@@ -1186,6 +1587,7 @@ class Game {
     document.getElementById("restartGameBtn").textContent = "Retry";
     this.setMenu(true, "CORE LOST", `Wave ${Math.max(0, this.wave - 1)}  ·  redesign and relaunch`, false, false, "game");
     this.setMenuButtons(false, false, true, false, true, true, false);
+    document.getElementById("glossaryBtn").style.display = "inline-block";
   }
 
   beginTutorial(force = false) {
@@ -1205,6 +1607,7 @@ class Game {
 
   renderTutorialStep() {
     const panel = document.getElementById("tutorialPanel");
+    this.clearTutorialHighlights();
     if (!this.tutorialActive || this.tutorialIndex >= TUTORIAL_STEPS.length) {
       panel.style.display = "none";
       return;
@@ -1212,11 +1615,90 @@ class Game {
     const step = TUTORIAL_STEPS[this.tutorialIndex];
     const taskCount = TUTORIAL_STEPS.length - 1;
     document.getElementById("tutorialTitle").textContent = step.title;
-    document.getElementById("tutorialCopy").textContent = step.copy;
+    this.renderTutorialCopy(step);
     document.getElementById("tutorialCount").textContent = `${Math.max(0, this.tutorialIndex)} / ${taskCount}`;
     document.getElementById("tutorialProgress").style.width = `${Math.max(0, this.tutorialIndex) / taskCount * 100}%`;
     document.getElementById("tutorialPrimaryBtn").style.display = this.tutorialIndex === 0 ? "inline-block" : "none";
     panel.style.display = "block";
+    if (step.target) {
+      const target = document.querySelector(step.target);
+      if (target && target.getClientRects().length > 0) target.classList.add("tutorial-highlight");
+    }
+  }
+
+  clearTutorialHighlights() {
+    document.querySelectorAll(".tutorial-highlight").forEach((element) => element.classList.remove("tutorial-highlight"));
+  }
+
+  renderTutorialCopy(step) {
+    const copy = document.getElementById("tutorialCopy");
+    copy.replaceChildren();
+    if (step.iconFrom) {
+      const source = document.querySelector(step.iconFrom);
+      if (source) {
+        const icon = document.createElement("span");
+        icon.className = "tutorial-step-icon";
+        icon.setAttribute("aria-hidden", "true");
+        icon.append(source.cloneNode(true));
+        copy.append(icon);
+      }
+    }
+
+    const keyLabels = {
+      "{cycleUnit}": this.formatKeybind("cycleUnit"),
+      "{moveCommand}": this.formatKeybind("moveCommand")
+    };
+    const text = step.copy.replace(/\{cycleUnit\}|\{moveCommand\}/g, (token) => keyLabels[token]);
+    const terms = [...(step.terms || [])].map((term) => keyLabels[term] || term).sort((a, b) => b.length - a.length);
+    const lowerCopy = text.toLowerCase();
+    let cursor = 0;
+    while (cursor < text.length) {
+      let nextIndex = text.length;
+      let nextTerm = "";
+      for (const term of terms) {
+        const found = lowerCopy.indexOf(term.toLowerCase(), cursor);
+        if (found >= 0 && (found < nextIndex || (found === nextIndex && term.length > nextTerm.length))) {
+          nextIndex = found;
+          nextTerm = term;
+        }
+      }
+      if (!nextTerm) {
+        copy.append(document.createTextNode(text.slice(cursor)));
+        break;
+      }
+      if (nextIndex > cursor) copy.append(document.createTextNode(text.slice(cursor, nextIndex)));
+      const highlight = document.createElement("span");
+      highlight.className = "game-term";
+      highlight.textContent = text.slice(nextIndex, nextIndex + nextTerm.length);
+      copy.append(highlight);
+      cursor = nextIndex + nextTerm.length;
+    }
+  }
+
+  renderTutorialWorldGlow(ctx) {
+    if (!this.tutorialActive || this.tutorialIndex >= TUTORIAL_STEPS.length) return;
+    const action = TUTORIAL_STEPS[this.tutorialIndex].action;
+    const targets = [];
+    if (action === "miner") {
+      for (const node of this.resourceNodes) if (!node.occupied) targets.push({ x: node.x, y: node.y, radius: 17 });
+    } else if (action === "unit") {
+      const allies = this.units.length > 0 ? this.units : this.structures.filter((structure) => structure.type === "Assembler");
+      for (const entity of allies) targets.push({ x: entity.x, y: entity.y, radius: (entity.radius || 16) + 11 });
+    } else if (action === "wave") {
+      targets.push({ x: this.mainCore.x, y: this.mainCore.y, radius: 48 });
+    }
+    if (targets.length === 0) return;
+    ctx.save();
+    ctx.strokeStyle = "#ffd875";
+    ctx.lineWidth = 2.5 / this.camera.zoom;
+    ctx.shadowColor = "rgba(255,216,117,.95)";
+    ctx.shadowBlur = 19;
+    for (const target of targets) {
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, target.radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   completeTutorialAction(action) {
@@ -1233,6 +1715,7 @@ class Game {
   finishTutorial(skipped = false) {
     this.tutorialActive = false;
     this.tutorialCompleted = true;
+    this.clearTutorialHighlights();
     document.getElementById("tutorialPanel").style.display = "none";
     try {
       localStorage.setItem(this.tutorialStorageKey, "1");
@@ -1244,6 +1727,7 @@ class Game {
 
   closeTutorial() {
     this.tutorialActive = false;
+    this.clearTutorialHighlights();
     const panel = document.getElementById("tutorialPanel");
     if (panel) panel.style.display = "none";
   }
@@ -1277,6 +1761,12 @@ class Game {
   }
 
   handleEscapeToggle() {
+    if (this.menuMode === "options" || this.menuMode === "glossary") {
+      if (this.lastNonOptionsMenuMode === "pause") this.showPauseMenu();
+      else if (this.lastNonOptionsMenuMode === "gameover") this.showGameOverMenu();
+      else this.showMainMenu();
+      return;
+    }
     if (this.gameOver) return;
     if (this.started && !this.paused) {
       this.paused = true;
@@ -1286,9 +1776,6 @@ class Game {
     if (this.started && this.paused) {
       this.resumeFromPause();
       return;
-    }
-    if (!this.started && this.menuMode === "options") {
-      this.showMainMenu();
     }
   }
 
@@ -1569,7 +2056,10 @@ class Game {
     this.contractBaseline = state.contractBaseline || null;
     this.testTargets = [];
     this.projectiles = [];
-    this.camera = { ...state.camera };
+    this.camera = { ...(state.camera || { x: 0, y: 0 }), zoom: clampZoom(Number.isFinite(state.camera?.zoom) ? state.camera.zoom : this.settings.zoom) };
+    this.settings.zoom = this.camera.zoom;
+    this.saveSettings();
+    this.syncSettingsUI();
     this.isSandbox = !!state.isSandbox;
     this.infiniteCoreHealth = !!state.infiniteCoreHealth;
     this.infiniteResources = !!state.infiniteResources;
@@ -1697,14 +2187,14 @@ class Game {
   }
 
   centerCameraOnCore() {
-    this.camera.x = this.mainCore.x - this.canvas.width / 2;
-    this.camera.y = this.mainCore.y - this.canvas.height / 2;
+    this.camera.x = this.mainCore.x - this.canvas.width / (2 * this.camera.zoom);
+    this.camera.y = this.mainCore.y - this.canvas.height / (2 * this.camera.zoom);
     this.clampCamera();
   }
 
   clampCamera() {
-    const maxX = WORLD_W * TILE_SIZE - this.canvas.width;
-    const maxY = WORLD_H * TILE_SIZE - this.canvas.height;
+    const maxX = WORLD_W * TILE_SIZE - this.canvas.width / this.camera.zoom;
+    const maxY = WORLD_H * TILE_SIZE - this.canvas.height / this.camera.zoom;
     this.camera.x = Math.max(0, Math.min(Math.max(0, maxX), this.camera.x));
     this.camera.y = Math.max(0, Math.min(Math.max(0, maxY), this.camera.y));
   }
@@ -1712,14 +2202,15 @@ class Game {
   updateCameraFromInput(dt) {
     let mx = 0;
     let my = 0;
-    if (this.keys["KeyW"]) my -= 1;
-    if (this.keys["KeyS"]) my += 1;
-    if (this.keys["KeyA"]) mx -= 1;
-    if (this.keys["KeyD"]) mx += 1;
+    if (this.keys.panUp) my -= 1;
+    if (this.keys.panDown) my += 1;
+    if (this.keys.panLeft) mx -= 1;
+    if (this.keys.panRight) mx += 1;
     if (mx !== 0 || my !== 0) {
       const m = Math.hypot(mx, my);
-      this.camera.x += (mx / m) * this.cameraSpeed * dt;
-      this.camera.y += (my / m) * this.cameraSpeed * dt;
+      const worldSpeed = this.cameraSpeed / this.camera.zoom;
+      this.camera.x += (mx / m) * worldSpeed * dt;
+      this.camera.y += (my / m) * worldSpeed * dt;
       this.clampCamera();
     }
   }
@@ -2149,8 +2640,8 @@ class Game {
     }
 
     this.updateCameraFromInput(dt);
-    this.mouse.worldX = this.mouse.x + this.camera.x;
-    this.mouse.worldY = this.mouse.y + this.camera.y;
+    this.mouse.worldX = this.camera.x + this.mouse.x / this.camera.zoom;
+    this.mouse.worldY = this.camera.y + this.mouse.y / this.camera.zoom;
 
     this.autoSaveTimer += dt;
     if (this.autoSaveTimer >= this.autoSaveInterval) {
@@ -2415,10 +2906,12 @@ class Game {
       ? "⛏ PLACE MINER"
       : `${({ frontier: "FRONTIER", shattered: "SHATTERED", rich: "RICH", ion: "ION" })[this.scenario] || "FRONTIER"}${this.isSandbox ? " · LAUNCH" : ""}`);
     objective.children[0].style.color = coreRatio < .3 ? "#ff958d" : coreRatio < .6 ? "#e7c47e" : "#a6bdc3";
+    const panKeys = ["panUp", "panLeft", "panDown", "panRight"].map((action) => this.formatKeybind(action)).join("/");
+    const pauseKey = this.formatKeybind("pause");
     objective.children[1].innerHTML = this.moveCommandMode
-      ? "<kbd>M</kbd> ➜ CLICK · <kbd>ESC</kbd> Ⅱ"
-      : "<kbd>WASD</kbd> ◉ · <kbd>Q</kbd> ⇄ · <kbd>M</kbd> ➜ · <kbd>ESC</kbd> Ⅱ";
-    objective.children[1].title = this.moveCommandMode ? "Click a destination · Escape pauses" : "Pan · steer · cycle unit · move squad · pause";
+      ? `<kbd>${this.formatKeybind("moveCommand")}</kbd> ➜ CLICK · <kbd>${pauseKey}</kbd> Ⅱ`
+      : `<kbd>${panKeys}</kbd> PAN · <kbd>${this.formatKeybind("cycleUnit")}</kbd> ⇄ · <kbd>${this.formatKeybind("moveCommand")}</kbd> ➜ · <kbd>${pauseKey}</kbd> Ⅱ`;
+    objective.children[1].title = this.moveCommandMode ? `Click a destination · ${pauseKey} pauses` : "Pan · steer · cycle unit · move squad · pause";
     const progress = this.pendingUpgrade ? 100 : !this.isSandbox && !this.hasPlacedFirstMiner ? 0 : this.waveActive
       ? Math.max(0, Math.min(100, 100 * (1 - this.enemies.length / Math.max(1, this.enemiesAtWaveStart))))
       : (this.isSandbox ? 0 : 100 * (1 - this.waveTimer / this.getWaveInterval(this.wave)));
@@ -2810,6 +3303,7 @@ class Game {
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     ctx.save();
+    ctx.scale(this.camera.zoom, this.camera.zoom);
     ctx.translate(-this.camera.x, -this.camera.y);
 
     this.renderGrid(ctx);
@@ -2823,7 +3317,8 @@ class Game {
     for (const e of this.enemies) e.render(ctx);
     for (const target of this.testTargets) target.render(ctx);
     for (const p of this.projectiles) p.render(ctx);
-    for (const e of this.enemies) e.renderBossWarning(ctx);
+    for (const e of this.enemies) e.renderBossWarning(ctx, this.settings.reducedMotion);
+    this.renderTutorialWorldGlow(ctx);
 
     if (this.selectedStructure) {
       const s = this.selectedStructure;
@@ -2916,9 +3411,9 @@ class Game {
 
   renderGrid(ctx) {
     const startX = Math.floor(this.camera.x / TILE_SIZE) * TILE_SIZE;
-    const endX = this.camera.x + this.canvas.width + TILE_SIZE;
+    const endX = this.camera.x + this.canvas.width / this.camera.zoom + TILE_SIZE;
     const startY = Math.floor(this.camera.y / TILE_SIZE) * TILE_SIZE;
-    const endY = this.camera.y + this.canvas.height + TILE_SIZE;
+    const endY = this.camera.y + this.canvas.height / this.camera.zoom + TILE_SIZE;
 
     ctx.fillStyle = "#0b1c21";
     ctx.fillRect(startX, startY, endX - startX, endY - startY);
@@ -3022,8 +3517,13 @@ class Game {
   }
 
   resize() {
+    const zoom = this.camera.zoom || 1;
+    const centerX = this.camera.x + this.canvas.width / (2 * zoom);
+    const centerY = this.camera.y + this.canvas.height / (2 * zoom);
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
+    this.camera.x = centerX - this.canvas.width / (2 * zoom);
+    this.camera.y = centerY - this.canvas.height / (2 * zoom);
     this.clampCamera();
   }
 }
@@ -3287,6 +3787,11 @@ function drawHpBar(ctx, hp, maxHp, w, y) {
 
 function randRange(min, max) {
   return min + Math.random() * (max - min);
+}
+
+function clampZoom(zoom) {
+  const value = Number.isFinite(zoom) ? zoom : 1;
+  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value));
 }
 
 new Game(document.getElementById("gameCanvas"));

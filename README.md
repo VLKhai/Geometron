@@ -24,7 +24,7 @@ The first assault countdown begins only after you place your first Miner. That g
 
 ## Game modes and expeditions
 
-The main menu offers four expeditions, a guided tutorial, and a freeform Sandbox.
+The main menu offers four expeditions, a guided tutorial, a Field Guide glossary, and a freeform Sandbox. The Field Guide is also available from the pause menu and explains gameplay terms such as doctrines, contracts, deposits, and Blueprints.
 
 | Mode | What changes |
 | --- | --- |
@@ -32,7 +32,7 @@ The main menu offers four expeditions, a guided tutorial, and a freeform Sandbox
 | **Shattered** | The Core starts at 720 HP. Wave rewards are 35% higher, and the map has extra hazardous terrain. |
 | **Rich Expanse** | Starts with more resources and has extra deposits and resource springs. Enemies have more HP. |
 | **Ion Crown** | Adds several damaging Ion Fields. Plan routes and building locations around the hazards. |
-| **Guide** | A step-by-step tutorial introduces mining, construction, blueprint design, unit selection, and squad orders. It can be replayed from the menu. |
+| **Guide** | A step-by-step tutorial introduces mining, construction, blueprint design, unit selection, and squad orders. Important game terms are highlighted in yellow, the exact build icon is repeated in the instruction, and a glowing outline points to the relevant control or map object. It can be replayed from the menu. |
 | **Sandbox** | Start with infinite resources and a protected Core. Launch waves when ready, spawn target dummies, and toggle the sandbox assists. |
 
 The world is a 64 × 64 tile map. Use the camera controls to scout deposits and terrain around the Core.
@@ -154,16 +154,24 @@ Use the **Library** to save up to 20 designs in this browser, load them later, o
 | **Drag** | Select a group of units |
 | **Q** | Cycle to the next controllable unit |
 | **Arrow keys** | Steer the selected unit |
-| **M**, then click | Order selected units to move to a destination |
+| **E**, then click | Order selected units to move to a destination |
+| **+ / −** | Zoom in or out |
+| **0** | Reset zoom to 100% |
+| **Mouse wheel** | Zoom toward or away from the pointer |
 | **Right-click** | Scrap a unit or building |
 | **Escape** | Pause or resume |
 
 ### Touch
 
 - Drag the map to pan.
+- Pinch the map to zoom. The on-screen **＋ / −** controls also change zoom; tap the percentage to reset to 100%.
 - Tap units, structures, or deposits to select and inspect them.
 - Use the on-screen **➤ Move** button, then tap a destination to order selected units.
 - Tap a building button, then tap the map to place it. Miner placement snaps to a highlighted deposit tile.
+
+## Options
+
+Open **Options** from the main or pause menu to adjust map zoom, camera pan speed, reduced motion, and fullscreen mode. Expand **Keyboard controls** to rebind camera pan, unit steering, unit cycling, move orders, zoom, reset zoom, and pause. Click a displayed key and press its replacement. **E** is the default move-order key. Use **Defaults** to restore the original keybinds, 100% zoom, standard pan speed, and normal motion. Settings are saved in the current browser.
 
 ## Saves and local data
 

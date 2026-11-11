@@ -116,6 +116,7 @@
     #restartGameBtn::before { content: "↻"; }
     #startSandboxBtn::before { content: "∞"; }
     #tutorialBtn::before { content: "⌖"; }
+    #glossaryBtn::before { content: "◈"; }
     #resumeGameBtn::before { content: "▶"; }
     #menuHomeBtn::before { content: "⌂"; }
     #optionsBtn::before { content: "⚙"; }
@@ -131,6 +132,29 @@
     .save-actions { display: flex; gap: 5px; }
     .save-actions button { min-width: 29px; min-height: 26px; padding: 4px 6px; font-size: 12px; }
     .save-empty { color: #7e969c; font-size: 10px; }
+    #optionsPanel { display: none; margin-top: 12px; padding: 12px; border: 1px solid rgba(137,197,203,.16); border-radius: 12px; background: rgba(3,12,18,.5); text-align: left; }
+    .option-control { margin-bottom: 12px; }
+    .option-label { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 6px; color: #a9c0c5; font: 9px var(--mono); letter-spacing: .07em; }
+    .option-label output { color: var(--mint); }
+    .option-control input[type="range"] { width: 100%; accent-color: var(--mint); }
+    .option-hint { color: #728a91; font: 8px var(--mono); }
+    .option-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; color: #a9c0c5; font-size: 10px; }
+    .option-toggle input { width: 17px; height: 17px; accent-color: var(--mint); }
+    .option-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
+    .option-actions button { font-size: 9px; }
+    .keybind-settings { margin: 9px 0; padding: 8px 0; border-top: 1px solid rgba(137,197,203,.12); border-bottom: 1px solid rgba(137,197,203,.12); }
+    .keybind-settings summary { color: #b5c9cc; cursor: pointer; font: 9px var(--mono); }
+    #keybindHint { margin: 7px 0; color: #81999e; font-size: 9px; line-height: 1.45; }
+    #keybindList { display: grid; gap: 4px; }
+    .keybind-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; color: #a9c0c5; font-size: 9px; }
+    .keybind-row button { min-width: 68px; padding: 5px 7px; color: #ffd875; font: 700 9px var(--mono); }
+    .keybind-row button.listening { border-color: #ffd875; color: #fff0ba; box-shadow: 0 0 13px rgba(255,216,117,.35); }
+    #cancelKeybindBtn { display: none; width: 100%; margin-top: 6px; padding: 5px 8px; font-size: 9px; }
+    #zoomControls { position: fixed; z-index: 6; top: 50%; right: 15px; transform: translateY(-50%); display: grid; gap: 5px; padding: 6px; border: 1px solid rgba(144,197,207,.18); border-radius: 12px; background: rgba(7,19,27,.82); box-shadow: 0 8px 24px rgba(0,0,0,.3); backdrop-filter: blur(12px); pointer-events: auto; }
+    #zoomControls button { width: 36px; height: 36px; min-width: 36px; min-height: 36px; display: grid; place-items: center; padding: 3px; color: #d6edf0; font: 600 17px var(--mono); }
+    #zoomReadout { color: var(--mint) !important; font-size: 9px !important; }
+    #zoomControls button:last-child { color: var(--cyan); }
+    body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
     #tutorialPanel { position: fixed; z-index: 10; top: 148px; right: 18px; width: min(360px, calc(100vw - 28px)); padding: 16px 18px 14px; border: 1px solid rgba(108,224,186,.34); border-radius: 15px; background: linear-gradient(145deg, rgba(10,31,38,.97), rgba(5,17,24,.96)); box-shadow: 0 18px 50px rgba(0,0,0,.4), inset 0 1px rgba(255,255,255,.04); backdrop-filter: blur(16px); }
     .tutorial-topline { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
     #tutorialLabel { color: var(--mint); font: 9px var(--mono); letter-spacing: .16em; text-transform: uppercase; }
@@ -142,6 +166,18 @@
     .tutorial-actions { display: flex; justify-content: flex-end; gap: 7px; }
     .tutorial-actions button { padding: 6px 9px; font-size: 9px; }
     #tutorialPrimaryBtn { border-color: rgba(108,224,186,.42); color: #dffff1; background: rgba(31,95,76,.46); }
+    .game-term, .glossary-term { color: #ffd875; font-weight: 700; text-shadow: 0 0 12px rgba(255,216,117,.22); }
+    .tutorial-highlight { position: relative !important; z-index: 9 !important; outline: 2px solid #ffd875 !important; outline-offset: 4px; animation: tutorial-glow 1s ease-in-out infinite alternate; }
+    @keyframes tutorial-glow { from { box-shadow: 0 0 0 3px rgba(255,216,117,.12), 0 0 10px rgba(255,216,117,.38); } to { box-shadow: 0 0 0 6px rgba(255,216,117,.22), 0 0 25px rgba(255,216,117,.78); } }
+    .tutorial-step-icon { display: inline-flex; vertical-align: middle; align-items: center; margin-right: 6px; color: #ffd875; }
+    .tutorial-step-icon .build-icon { color: #ffd875; }
+    .tutorial-step-icon .build-icon svg { width: 19px; height: 19px; }
+    #glossaryPanel { display: none; max-height: min(55vh, 510px); overflow-y: auto; margin-top: 12px; padding: 12px; border: 1px solid rgba(255,216,117,.22); border-radius: 12px; background: rgba(3,12,18,.54); text-align: left; }
+    .glossary-intro { margin: 0 0 10px; color: #9bb0b5; font-size: 9px; line-height: 1.5; }
+    .glossary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+    .glossary-entry { min-width: 0; padding: 8px 9px; border: 1px solid rgba(137,197,203,.12); border-radius: 9px; background: rgba(15,34,41,.68); }
+    .glossary-term { display: block; margin-bottom: 3px; font: 700 9px var(--mono); }
+    .glossary-entry p { margin: 0; color: #afc2c6; font-size: 9px; line-height: 1.48; }
     .mission-picker { margin: 0 auto 15px; max-width: 360px; padding: 10px 12px; border: 1px solid rgba(137,197,203,.13); border-radius: 11px; background: rgba(3,12,18,.4); text-align: left; }
     .mission-picker label { display: block; margin-bottom: 6px; color: #89a3ad; font: 9px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
     #scenarioSelect { width: 100%; border: 1px solid rgba(147,190,199,.2); border-radius: 8px; padding: 8px 9px; background: #10262d; color: #d8e7e9; font: 10px var(--sans); }
@@ -221,8 +257,12 @@
       #sandboxPanel:not([style*="display: block"]) { display: none !important; }
       #toast { top: 127px; width: max-content; max-width: 90vw; font-size: 10px; }
       #tutorialPanel { top: 158px; left: 50%; right: auto; transform: translateX(-50%); width: min(390px, calc(100vw - 14px)); padding: 11px 13px 10px; }
+      #zoomControls { right: 7px; padding: 4px; gap: 4px; }
+      #zoomControls button { width: 34px; height: 34px; min-width: 34px; min-height: 34px; }
       #tutorialTitle { font-size: 12px; margin-bottom: 4px; }
       #tutorialCopy { font-size: 9px; line-height: 1.48; }
+      .glossary-grid { grid-template-columns: 1fr; }
+      #glossaryPanel { max-height: 58vh; padding: 9px; }
       .tutorial-track { margin: 8px 0 7px; }
       #intermissionPanel { top: 158px; padding: 10px; max-height: calc(100vh - 174px); overflow-y: auto; }
       #intermissionPanel h2 { font-size: 12px; }
@@ -240,6 +280,7 @@
       .icon-only { min-width: 40px; min-height: 40px; }
       #buildButtons .build-btn { min-height: 42px; }
       #cellRoleButtons button { min-height: 40px; }
+      #zoomControls button { width: 42px; height: 42px; min-width: 42px; min-height: 42px; }
     }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; } }
   </style>
@@ -270,14 +311,70 @@
         <button id="resumeGameBtn">Resume</button>
         <button id="menuHomeBtn">Home</button>
         <button id="optionsBtn">Options</button>
+        <button id="glossaryBtn">Field Guide</button>
         <button id="backBtn">Back</button>
       </div>
+      <section id="optionsPanel" aria-label="Game options">
+        <div class="option-control">
+          <label class="option-label" for="zoomSlider"><span>⌕ MAP ZOOM</span><output id="zoomValue" for="zoomSlider">100%</output></label>
+          <input id="zoomSlider" type="range" min="50" max="200" step="1" value="100" aria-label="Map zoom">
+          <div class="option-hint">Mouse wheel · touch pinch · + / −</div>
+        </div>
+        <div class="option-control">
+          <label class="option-label" for="panSpeedSlider"><span>✥ PAN SPEED</span><output id="panSpeedValue" for="panSpeedSlider">320 px/s</output></label>
+          <input id="panSpeedSlider" type="range" min="100" max="600" step="20" value="320" aria-label="Camera pan speed">
+        </div>
+        <label class="option-toggle" for="reducedMotionToggle"><span>◌ Reduce motion</span><input id="reducedMotionToggle" type="checkbox"></label>
+        <details class="keybind-settings">
+          <summary>⌨ Keyboard controls</summary>
+          <p id="keybindHint" aria-live="polite">Displayed keys are defaults. Click one to replace it; changes save in this browser. Use Defaults to reset them.</p>
+          <div id="keybindList"></div>
+          <button id="cancelKeybindBtn" type="button">Cancel key change</button>
+        </details>
+        <div class="option-actions"><button id="fullscreenBtn" type="button">⛶ Fullscreen</button><button id="resetOptionsBtn" type="button">↺ Defaults</button></div>
+      </section>
+      <section id="glossaryPanel" aria-label="Game terms glossary">
+        <p class="glossary-intro">Quick definitions for the words, systems, and symbols used in Geometron.</p>
+        <div class="glossary-grid">
+          <article class="glossary-entry"><strong class="glossary-term">Core</strong><p>Your central base. Keep it alive; the run ends when its health reaches zero.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Miner</strong><p>Place on a glowing deposit to collect its resource every second.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Assembler</strong><p>Prints drones using your current Blueprint and available resources.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Turret Foundry</strong><p>Builds stationary defenses that automatically fire at nearby enemies.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Vehicle Bay</strong><p>Produces slower, tougher vehicles from your current Blueprint.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Drone</strong><p>A mobile machine that attacks nearby enemies automatically. You can select, steer, and give it squad orders.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Turret</strong><p>A stationary defense. Its automatic shots consume copper.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Vehicle</strong><p>A durable, slow-moving machine produced by a Vehicle Bay.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Blueprint</strong><p>Your machine design: its connected cell shape, cell roles, and socket modules.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Module socket</strong><p>One of four Blueprint slots. Weapon, Shield, and Support modules add different machine bonuses.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Workshop</strong><p>The panel where you shape, upgrade, save, and share Blueprints.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Doctrine</strong><p>Sets the next enemy wave. <b>Balanced</b> is standard; <b>Swarm</b> adds five fast-leaning enemies; <b>Armor</b> sends fewer, tougher, tank-heavy enemies.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Contract</strong><p>An optional challenge for a bonus of 70 copper and 25 gold when completed.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Untouched Core</strong><p>Contract: complete the wave without the Core taking damage.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Protect Miners</strong><p>Contract: keep every Miner alive until the wave is over.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Lean Defense</strong><p>Contract: finish with no more turrets than you had when the wave began.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Wave</strong><p>An enemy assault. The first countdown starts after your first Miner; every fifth wave includes a Boss.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Boss</strong><p>A powerful enemy that warns before its area Slam. Move units out of the marked circle before impact.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Intermission</strong><p>The planning break after a wave. Choose an upgrade, doctrine, and optional contract before deploying again.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Upgrade</strong><p>A lasting run bonus. Pick one between waves: Core health, factory speed, mining, or weapon damage.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Resource deposit</strong><p>A map deposit holding copper, coal, or gold. A Miner must occupy it to harvest it.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Copper ◉ · Coal ⬟ · Gold ◆</strong><p>The three resources used to build structures and produce machines.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Resource Spring</strong><p>A map feature that improves mining for nearby Miners.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Ion Field</strong><p>A hazardous map zone that drains health from entities inside it.</p></article>
+          <article class="glossary-entry"><strong class="glossary-term">Blueprint cells</strong><p>Armor adds health; Weapon adds damage; Sensor adds range; Engine adds speed.</p></article>
+        </div>
+      </section>
       <div id="saveListPanel">
         <div id="saveListTitle">▣ Saves · 3</div>
         <div id="saveList"></div>
       </div>
     </div>
   </div>
+  <nav id="zoomControls" aria-label="Map zoom controls">
+    <button class="icon-only" id="zoomInBtn" title="Zoom in" aria-label="Zoom in">＋</button>
+    <button class="icon-only" id="zoomReadout" title="Reset zoom" aria-label="Reset map zoom">100%</button>
+    <button class="icon-only" id="zoomOutBtn" title="Zoom out" aria-label="Zoom out">−</button>
+    <button class="icon-only" id="centerViewBtn" title="Center on Core" aria-label="Center map on the Core">⌖</button>
+  </nav>
   <div id="ui">
     <div class="panel" id="topBar">
       <div class="topline">
@@ -286,7 +383,7 @@
         <div id="waveText" aria-live="polite"></div>
         <div id="statusText"></div>
       </div>
-      <div id="objectiveText"><span><strong>♥ CORE</strong> · HOLD</span><span><kbd>WASD</kbd> ◉ <kbd>Q</kbd> ⇄ <kbd>M</kbd> ➜ <kbd>ESC</kbd> Ⅱ</span></div>
+      <div id="objectiveText"><span><strong>♥ CORE</strong> · HOLD</span><span><kbd>WASD</kbd> ◉ <kbd>Q</kbd> ⇄ <kbd>E</kbd> ➜ <kbd>ESC</kbd> Ⅱ</span></div>
       <div class="wave-track"><div id="waveProgress"></div></div>
       <div class="row" id="buildButtons">
         <button class="build-btn" data-build="Assembler" title="Assembler · 40 copper, 10 coal, 8 gold" aria-label="Build Assembler">
@@ -314,7 +411,7 @@
     </div>
     <div class="panel" id="helpPanel"><span title="Click to select">⌖ SELECT</span> · <span title="Drag to select a squad">⇧ DRAG</span> · <span title="Right click to scrap">⊖ SCRAP</span> · <span title="Click to build">⊕ BUILD</span></div>
     <div class="panel" id="shapePanel">
-      <div class="section-heading"><div><div class="eyebrow">▦ WORKSHOP</div><h2>Blueprint</h2></div><details class="icon-legend"><summary title="Icon guide" aria-label="Open icon guide">ⓘ</summary><div class="icon-legend-popover" role="group" aria-label="Icon guide"><div class="legend-grid"><span><b>⛨</b> Armor · HP</span><span><b>⚔</b> Weapon · DMG</span><span><b>◎</b> Sensor · range</span><span><b>ϟ</b> Engine · speed</span><span><b>♥</b> Core · health</span><span><b>◉</b> Copper</span><span><b>⬟</b> Coal</span><span><b>◆</b> Gold</span><span><b>⌖</b> Select</span><span><b>⇧</b> Drag</span><span><b>⊖</b> Scrap</span><span><b>⊕</b> Build</span><span><b>WASD</b> Pan</span><span><b>Q</b> Cycle</span><span><b>M</b> Move</span><span><b>ESC</b> Pause</span></div></div></details></div>
+      <div class="section-heading"><div><div class="eyebrow">▦ WORKSHOP</div><h2>Blueprint</h2></div><details class="icon-legend"><summary title="Icon guide" aria-label="Open icon guide">ⓘ</summary><div class="icon-legend-popover" role="group" aria-label="Icon guide"><div class="legend-grid"><span><b>⛨</b> Armor · HP</span><span><b>⚔</b> Weapon · DMG</span><span><b>◎</b> Sensor · range</span><span><b>ϟ</b> Engine · speed</span><span><b>♥</b> Core · health</span><span><b>◉</b> Copper</span><span><b>⬟</b> Coal</span><span><b>◆</b> Gold</span><span><b>⌖</b> Select</span><span><b>⇧</b> Drag</span><span><b>⊖</b> Scrap</span><span><b>⊕</b> Build</span><span><b data-key-display="pan">WASD</b> Pan</span><span><b data-key-display="cycleUnit">Q</b> Cycle</span><span><b data-key-display="moveCommand">E</b> Move</span><span><b>＋/−</b> Zoom</span><span><b data-key-display="resetZoom">0</b> Reset zoom</span><span><b data-key-display="pause">ESC</b> Pause</span></div></div></details></div>
       <div id="shapeMeta">Grid: 3 × 3</div>
       <canvas id="shapeCanvas" width="240" height="240" aria-label="Click cells to shape your blueprint"></canvas>
       <div id="cellRoleButtons">
@@ -352,7 +449,7 @@
     </div>
   </div>
   <aside id="tutorialPanel" style="display:none;" aria-live="polite" aria-atomic="true">
-    <div class="tutorial-topline"><span id="tutorialLabel">FIELD GUIDE</span><span id="tutorialCount">0 / 7</span></div>
+    <div class="tutorial-topline"><span id="tutorialLabel">TUTORIAL</span><span id="tutorialCount">0 / 7</span></div>
     <h2 id="tutorialTitle">Welcome, Commander</h2>
     <p id="tutorialCopy"></p>
     <div class="tutorial-track"><div id="tutorialProgress"></div></div>
