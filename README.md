@@ -35,7 +35,7 @@ The main menu offers four expeditions, a guided tutorial, a Field Guide glossary
 | **Guide** | A step-by-step tutorial introduces mining, construction, blueprint design, unit selection, and squad orders. Important game terms are highlighted in yellow, the exact build icon is repeated in the instruction, and a glowing outline points to the relevant control or map object. It can be replayed from the menu. |
 | **Sandbox** | Start with infinite resources and a protected Core. Launch waves when ready, spawn target dummies, and toggle the sandbox assists. |
 
-The world is a 64 × 64 tile map. Use the camera controls to scout deposits and terrain around the Core.
+The world is a 128 × 128 tile map, four times the previous playable area. Three wide resource belts lead away from the Core, with deposits to scout and claim across the map. Zoom out to 25% for a broader view, then pan in to plan routes and defenses.
 
 ## Resources and deposits
 
@@ -55,7 +55,7 @@ Place a Miner on a highlighted deposit tile. It produces its deposit's resource 
 | Coal | 2.0 |
 | Gold | 1.3 |
 
-Resource Springs increase Miner output in their radius by 35%. Each Survey upgrade adds another 15% mining output. Select a deposit or hover over one with a mouse to see its expected output and whether a Miner already occupies it.
+Resource Springs increase Miner output in their radius by 35%. Each Survey upgrade adds another 15% mining output. Select a deposit or hover over one with a mouse to see its expected output and whether a Miner already occupies it. Deposits are spread across inner, middle, and outer belts so expansion is needed to reach the full supply.
 
 Frontier, Shattered, and Ion Crown start with 240 copper, 90 coal, and 140 gold. Rich Expanse starts with 340 copper, 125 coal, and 205 gold.
 
@@ -85,11 +85,11 @@ The total unit and turret limit is 100. Enemy groups approach from the edges of 
 | Fast | 35 | Moves quickly and has low HP. |
 | Standard | 70 | Balanced movement and durability. |
 | Tank | 130 | Slow, durable, and deals heavier damage. |
-| Boss | 520 | Appears every fifth wave and grows stronger in later cycles. |
+| Boss | 650+ | Appears every fifth wave. Each cycle grows in size, health, damage, speed, Slam radius, and attack cadence. |
 
-Bosses charge a **Slam** for 1.15 seconds. A red circle marks the blast area, a countdown appears in the wave display, and the Slam damages allied entities inside the marked zone. Move units out of the circle before impact.
+Bosses charge a **Slam** before impact. A red circle marks the blast area, a countdown appears in the wave display, and the Slam damages allied entities inside the marked zone. Higher-cycle bosses charge faster and hit a much wider area, so move units out of the circle before impact. Five distinct boss blueprints also shape their combat style: Aegis favors armor, Reaver attacks rapidly, Siegebreaker hits hard, Prism has a wider Slam, and Leviathan is exceptionally durable and large. Those designs return as stronger, larger variants in later cycles.
 
-Ion Fields drain HP from anything caught inside them. Ruins block construction. Resource Springs increase mining output.
+Ion Fields drain HP from anything caught inside them. Ancient ruins, boulder clusters, crystal spires, and broken wall sections block building placement and create landmarks between resource belts. Resource Springs increase mining output.
 
 ## Waves, upgrades, and contracts
 
@@ -171,7 +171,7 @@ Use the **Library** to save up to 20 designs in this browser, load them later, o
 
 ## Options
 
-Open **Options** from the main or pause menu to adjust map zoom, camera pan speed, reduced motion, and fullscreen mode. Expand **Keyboard controls** to rebind camera pan, unit steering, unit cycling, move orders, zoom, reset zoom, and pause. Click a displayed key and press its replacement. **E** is the default move-order key. Use **Defaults** to restore the original keybinds, 100% zoom, standard pan speed, and normal motion. Settings are saved in the current browser.
+Open **Options** from the main or pause menu to adjust map zoom from 25% to 200%, camera pan speed, reduced motion, and fullscreen mode. Expand **Keyboard controls** to rebind camera pan, unit steering, unit cycling, move orders, zoom, reset zoom, and pause. Click a displayed key and press its replacement. **E** is the default move-order key. Use **Defaults** to restore the original keybinds, 100% zoom, standard pan speed, and normal motion. Settings are saved in the current browser.
 
 ## Saves and local data
 

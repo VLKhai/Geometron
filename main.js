@@ -1,11 +1,11 @@
 const TILE_SIZE = 32;
-const WORLD_W = 64;
-const WORLD_H = 64;
+const WORLD_W = 128;
+const WORLD_H = 128;
 const MAX_UNITS = 100;
 const MAX_STRUCTURES = 20;
 const MAX_BLUEPRINT_GRID = 8;
 const MINER_SNAP_RADIUS = 24;
-const MIN_ZOOM = 0.5;
+const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2;
 const BOSS_SLAM_WINDUP = 1.15;
 const BOSS_SLAM_RADIUS = 72;
@@ -382,6 +382,10 @@ class Enemy extends Entity {
       this.color = "#cc83f3";
       this.bossWindup = 0;
       this.bossAttackPoint = null;
+      this.bossCycle = 1;
+      this.slamRadius = BOSS_SLAM_RADIUS;
+      this.slamWindupDuration = BOSS_SLAM_WINDUP;
+      this.bossDesign = createBossDesign(this.bossCycle);
     } else {
       this.maxHp = 70;
       this.hp = 70;
@@ -392,6 +396,25 @@ class Enemy extends Entity {
       this.color = "#e07a5f";
     }
     this.range = 24;
+  }
+
+  configureBoss(waveIndex) {
+    if (this.archetype !== "boss") return;
+    const cycle = Math.max(1, Math.floor(waveIndex / 5));
+    const growth = cycle - 1;
+    this.bossCycle = cycle;
+    this.bossDesign = createBossDesign(cycle);
+    const traits = this.bossDesign.traits;
+    this.color = this.bossDesign.color;
+    this.radius = Math.min(118, Math.max(30, (30 + growth * 7) * traits.size));
+    this.maxHp = Math.round(740 * (1 + growth * .55) * (1 + Math.max(0, waveIndex - 5) * .025) * traits.hp);
+    this.hp = this.maxHp;
+    this.damage = Math.round((26 + growth * 5) * traits.damage);
+    this.speed = Math.min(45, (23 + growth * 1.4) * traits.speed);
+    this.cooldown = Math.max(.55, (1.18 - growth * .05) * traits.cooldown);
+    this.range = this.radius + 18;
+    this.slamRadius = Math.min(260, (92 + growth * 11) * traits.slam);
+    this.slamWindupDuration = Math.max(.65, 1.15 - growth * .035);
   }
 
   update(dt, game) {
@@ -405,7 +428,7 @@ class Enemy extends Entity {
         if (this.bossWindup <= 0 && this.bossAttackPoint) {
           const victims = [game.mainCore, ...game.structures, ...game.turrets, ...game.units];
           for (const victim of victims) {
-            if (!victim.dead && Math.hypot(victim.x - this.bossAttackPoint.x, victim.y - this.bossAttackPoint.y) <= BOSS_SLAM_RADIUS) {
+            if (!victim.dead && Math.hypot(victim.x - this.bossAttackPoint.x, victim.y - this.bossAttackPoint.y) <= this.slamRadius) {
               victim.takeDamage(this.damage);
             }
           }
@@ -419,7 +442,7 @@ class Enemy extends Entity {
         this.moveToward(target.x, target.y, dt);
       } else if (this.attackTimer <= 0) {
         this.bossAttackPoint = { x: target.x, y: target.y };
-        this.bossWindup = BOSS_SLAM_WINDUP;
+        this.bossWindup = this.slamWindupDuration;
       }
       return;
     }
@@ -447,14 +470,25 @@ class Enemy extends Entity {
     } else if (this.archetype === "tank") {
       ctx.fillRect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
     } else if (this.archetype === "boss") {
-      ctx.rotate(Math.PI / 4);
-      ctx.fillRect(-this.radius * .78, -this.radius * .78, this.radius * 1.56, this.radius * 1.56);
-      ctx.rotate(-Math.PI / 4);
+      const design = this.bossDesign || createBossDesign(this.bossCycle || 1);
+      drawGridShape(ctx, design.grid, this.radius / 3.9, 1, design.modules);
+      ctx.shadowBlur = 0;
       ctx.strokeStyle = "#f5d9ff";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = Math.max(2, this.radius * .035);
       ctx.beginPath();
       ctx.arc(0, 0, this.radius + 4, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.strokeStyle = `${this.color}a8`;
+      ctx.lineWidth = Math.max(1, this.radius * .018);
+      ctx.setLineDash([this.radius * .18, this.radius * .12]);
+      ctx.beginPath();
+      ctx.arc(0, 0, this.radius + 12, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#fff4ff";
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.max(3, this.radius * .11), 0, Math.PI * 2);
+      ctx.fill();
     } else {
       ctx.beginPath();
       ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
@@ -477,22 +511,33 @@ class Enemy extends Entity {
       ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
       ctx.stroke();
     }
-    drawHpBar(ctx, this.hp, this.maxHp, 22, -20);
+    const hpWidth = this.archetype === "boss" ? Math.max(42, this.radius * 1.65) : 22;
+    const hpY = this.archetype === "boss" ? -this.radius - 15 : -20;
+    drawHpBar(ctx, this.hp, this.maxHp, hpWidth, hpY);
+    if (this.archetype === "boss") {
+      const design = this.bossDesign || createBossDesign(this.bossCycle || 1);
+      ctx.fillStyle = "#f5d9ff";
+      ctx.font = "bold 8px 'DM Mono', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`${design.name.toUpperCase()} · MK ${this.bossCycle || 1}`, 0, hpY - 4);
+    }
     ctx.restore();
   }
 
   renderBossWarning(ctx, reducedMotion = false) {
     if (this.archetype !== "boss" || this.bossWindup <= 0 || !this.bossAttackPoint) return;
     const { x, y } = this.bossAttackPoint;
-    const progress = Math.max(0, 1 - this.bossWindup / BOSS_SLAM_WINDUP);
+    const radius = this.slamRadius || BOSS_SLAM_RADIUS;
+    const duration = this.slamWindupDuration || BOSS_SLAM_WINDUP;
+    const progress = Math.max(0, 1 - this.bossWindup / duration);
     const pulse = reducedMotion ? .5 : .5 + Math.sin(performance.now() / 90) * .12;
     ctx.save();
     ctx.fillStyle = `rgba(255,82,96,${pulse * .16})`;
-    ctx.beginPath(); ctx.arc(x, y, BOSS_SLAM_RADIUS, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = "rgba(255,103,112,.94)";
     ctx.lineWidth = 2.5;
     ctx.setLineDash([8, 5]);
-    ctx.beginPath(); ctx.arc(x, y, BOSS_SLAM_RADIUS, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.stroke();
     ctx.setLineDash([]);
     ctx.strokeStyle = `rgba(255,220,218,${.58 + progress * .35})`;
     ctx.lineWidth = 2;
@@ -503,7 +548,7 @@ class Enemy extends Entity {
     ctx.fillStyle = "#ffdadd";
     ctx.font = "bold 10px 'DM Mono', monospace";
     ctx.textAlign = "center";
-    ctx.fillText(`⚠ SLAM · ${Math.max(0, this.bossWindup).toFixed(1)}s`, x, y - BOSS_SLAM_RADIUS - 10);
+    ctx.fillText(`⚠ SLAM · ${Math.max(0, this.bossWindup).toFixed(1)}s`, x, y - radius - 10);
     ctx.restore();
   }
 }
@@ -770,6 +815,27 @@ class Game {
       { x: cx + 120, y: cy + 410, type: "coal", occupied: false },
       { x: cx - 440, y: cy - 20, type: "copper", occupied: false }
     ];
+
+    const resourceCycle = ["copper", "coal", "gold", "copper", "gold", "coal", "copper", "gold"];
+    const belts = [
+      { radius: 850, count: 8, phase: Math.PI / 8 },
+      { radius: 1300, count: 12, phase: 0 },
+      { radius: 1760, count: 16, phase: Math.PI / 16 }
+    ];
+    const scenarioShift = { frontier: 0, shattered: .12, rich: -.1, ion: .2 }[this.scenario] || 0;
+    for (const [beltIndex, belt] of belts.entries()) {
+      for (let i = 0; i < belt.count; i++) {
+        const jitter = (((i * 5 + beltIndex * 3) % 7) - 3) * .018;
+        const radius = belt.radius + (((i * 3 + beltIndex) % 5) - 2) * 22;
+        const angle = belt.phase + scenarioShift + (Math.PI * 2 * i) / belt.count + jitter;
+        nodes.push({
+          x: Math.round(cx + Math.cos(angle) * radius),
+          y: Math.round(cy + Math.sin(angle) * radius),
+          type: resourceCycle[(i + beltIndex * 3) % resourceCycle.length],
+          occupied: false
+        });
+      }
+    }
     if (this.scenario === "rich") {
       nodes.push(
         { x: cx + 500, y: cy + 250, type: "gold", occupied: false },
@@ -783,15 +849,15 @@ class Game {
     const cx = this.mainCore.x;
     const cy = this.mainCore.y;
     const features = [
-      { type: "ruin", x: cx - 205, y: cy - 205, radius: 44 },
-      { type: "ruin", x: cx + 235, y: cy + 220, radius: 38 },
+      { type: "ruin", x: cx - 205, y: cy - 205, radius: 44, blocksPlacement: true },
+      { type: "ruin", x: cx + 235, y: cy + 220, radius: 38, blocksPlacement: true },
       { type: "spring", x: cx + 330, y: cy + 120, radius: 96 },
       { type: "spring", x: cx - 350, y: cy + 250, radius: 96 },
       { type: "spring", x: cx + 260, y: cy - 280, radius: 76 },
       { type: "ion", x: cx - 15, y: cy - 365, radius: 72 }
     ];
     if (this.scenario === "shattered") {
-      features.push({ type: "ruin", x: cx + 330, y: cy - 105, radius: 48 }, { type: "ion", x: cx - 390, y: cy + 350, radius: 72 });
+      features.push({ type: "ruin", x: cx + 330, y: cy - 105, radius: 48, blocksPlacement: true }, { type: "ion", x: cx - 390, y: cy + 350, radius: 72 });
     } else if (this.scenario === "rich") {
       features.push({ type: "spring", x: cx + 410, y: cy + 315, radius: 120 }, { type: "spring", x: cx - 440, y: cy - 330, radius: 120 });
     } else if (this.scenario === "ion") {
@@ -801,6 +867,32 @@ class Game {
         { type: "ion", x: cx + 410, y: cy + 365, radius: 84 },
         { type: "ion", x: cx - 350, y: cy - 380, radius: 78 }
       );
+    }
+
+    const obstacleBelts = [
+      { radius: 1040, count: 8, featureRadius: 64 },
+      { radius: 1520, count: 12, featureRadius: 70 },
+      { radius: 1850, count: 14, featureRadius: 58 }
+    ];
+    const obstacleTypes = ["boulder", "crystal", "wall", "ruin"];
+    const scenarioShift = { frontier: 0, shattered: .27, rich: .55, ion: .91 }[this.scenario] || 0;
+    for (const [beltIndex, belt] of obstacleBelts.entries()) {
+      const phase = Math.PI / belt.count + beltIndex * .19 + scenarioShift;
+      for (let i = 0; i < belt.count; i++) {
+        const jitter = (((i * 7 + beltIndex * 5) % 9) - 4) * .026;
+        const angle = phase + (Math.PI * 2 * i) / belt.count + jitter;
+        const radius = belt.radius + (((i * 5 + beltIndex * 2) % 7) - 3) * 25;
+        const type = obstacleTypes[(i + beltIndex + (this.scenario === "shattered" ? 1 : 0)) % obstacleTypes.length];
+        const scale = .82 + ((i * 7 + beltIndex * 3) % 5) * .09;
+        features.push({
+          type,
+          x: Math.round(cx + Math.cos(angle) * radius),
+          y: Math.round(cy + Math.sin(angle) * radius),
+          radius: Math.round(belt.featureRadius * scale),
+          angle,
+          blocksPlacement: true
+        });
+      }
     }
     return features;
   }
@@ -1922,6 +2014,10 @@ class Game {
         archetype: e.archetype,
         x: e.x,
         y: e.y,
+        bossCycle: e.bossCycle || 1,
+        radius: e.radius,
+        slamRadius: e.slamRadius,
+        slamWindupDuration: e.slamWindupDuration,
         hp: e.hp,
         maxHp: e.maxHp,
         damage: e.damage,
@@ -2025,12 +2121,25 @@ class Game {
       enemy.cooldown = e.cooldown;
       enemy.dead = e.dead;
       enemy.attackTimer = e.attackTimer || 0;
+      if (enemy.archetype === "boss") {
+        enemy.bossCycle = Math.max(1, e.bossCycle || 1);
+        enemy.bossDesign = createBossDesign(enemy.bossCycle);
+        enemy.color = enemy.bossDesign.color;
+        enemy.radius = e.radius || enemy.radius;
+        enemy.slamRadius = e.slamRadius || enemy.slamRadius;
+        enemy.slamWindupDuration = e.slamWindupDuration || enemy.slamWindupDuration;
+        enemy.range = enemy.radius + 18;
+      }
       enemy.bossWindup = Math.max(0, e.bossWindup || 0);
       enemy.bossAttackPoint = e.bossAttackPoint ? { ...e.bossAttackPoint } : null;
       return enemy;
     });
 
     this.resourceNodes = state.resourceNodes.map((n) => ({ ...n }));
+    for (const node of this.createResourceNodes()) {
+      const alreadySaved = this.resourceNodes.some((saved) => Math.hypot(saved.x - node.x, saved.y - node.y) < 16);
+      if (!alreadySaved) this.resourceNodes.push(node);
+    }
     this.terrainFeatures = this.createTerrainFeatures();
     this.wave = state.wave;
     this.waveTimer = state.waveTimer;
@@ -2193,10 +2302,14 @@ class Game {
   }
 
   clampCamera() {
-    const maxX = WORLD_W * TILE_SIZE - this.canvas.width / this.camera.zoom;
-    const maxY = WORLD_H * TILE_SIZE - this.canvas.height / this.camera.zoom;
-    this.camera.x = Math.max(0, Math.min(Math.max(0, maxX), this.camera.x));
-    this.camera.y = Math.max(0, Math.min(Math.max(0, maxY), this.camera.y));
+    const worldWidth = WORLD_W * TILE_SIZE;
+    const worldHeight = WORLD_H * TILE_SIZE;
+    const viewWidth = this.canvas.width / this.camera.zoom;
+    const viewHeight = this.canvas.height / this.camera.zoom;
+    const maxX = worldWidth - viewWidth;
+    const maxY = worldHeight - viewHeight;
+    this.camera.x = maxX < 0 ? maxX / 2 : Math.max(0, Math.min(maxX, this.camera.x));
+    this.camera.y = maxY < 0 ? maxY / 2 : Math.max(0, Math.min(maxY, this.camera.y));
   }
 
   updateCameraFromInput(dt) {
@@ -2473,7 +2586,7 @@ class Game {
       if (Math.hypot(x - node.x, y - node.y) < dist + 12) return true;
     }
     for (const feature of this.terrainFeatures) {
-      if (feature.type === "ruin" && Math.hypot(x - feature.x, y - feature.y) < dist + feature.radius) return true;
+      if ((feature.blocksPlacement || feature.type === "ruin") && Math.hypot(x - feature.x, y - feature.y) < dist + feature.radius) return true;
     }
     for (const s of this.structures) {
       if (Math.hypot(x - s.x, y - s.y) < dist + 18) return true;
@@ -2548,6 +2661,85 @@ class Game {
         ctx.font = "8px 'DM Mono', monospace";
         ctx.textAlign = "center";
         ctx.fillText("RESOURCE SPRING · +35%", feature.x, feature.y + feature.radius + 12);
+      } else if (feature.type === "boulder") {
+        const r = feature.radius;
+        const stones = [
+          [-.34, .12, .47, "#273941", "#89999a"],
+          [.28, -.2, .54, "#34474b", "#a2aeaa"],
+          [.22, .35, .36, "#1d2c34", "#738489"],
+          [-.3, -.36, .29, "#405156", "#a4b3af"]
+        ];
+        for (const [ox, oy, scale, fill, edge] of stones) {
+          ctx.fillStyle = fill;
+          ctx.strokeStyle = edge;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(feature.x + ox * r, feature.y + oy * r, r * scale, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "rgba(235,246,237,.23)";
+          ctx.beginPath();
+          ctx.arc(feature.x + (ox - .08) * r, feature.y + (oy - .12) * r, r * scale * .35, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.strokeStyle = "rgba(236,197,122,.48)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(feature.x, feature.y, r + 4, 0, Math.PI * 2); ctx.stroke();
+      } else if (feature.type === "crystal") {
+        const r = feature.radius;
+        const shards = [
+          [-.28, .08, .72, "#42c6d0"],
+          [.2, -.05, 1, "#83f1e4"],
+          [.42, .24, .53, "#4e9cce"],
+          [-.42, -.25, .5, "#7b8cde"]
+        ];
+        ctx.shadowColor = "#63e4ef";
+        ctx.shadowBlur = 13;
+        for (const [ox, oy, scale, color] of shards) {
+          const sx = feature.x + ox * r;
+          const sy = feature.y + oy * r;
+          const h = r * scale;
+          const w = h * .52;
+          ctx.fillStyle = color;
+          ctx.strokeStyle = "rgba(220,255,252,.8)";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy - h);
+          ctx.lineTo(sx + w, sy - h * .12);
+          ctx.lineTo(sx + w * .55, sy + h * .58);
+          ctx.lineTo(sx, sy + h * .82);
+          ctx.lineTo(sx - w * .55, sy + h * .58);
+          ctx.lineTo(sx - w, sy - h * .12);
+          ctx.closePath(); ctx.fill(); ctx.stroke();
+          ctx.strokeStyle = "rgba(237,255,252,.62)";
+          ctx.beginPath(); ctx.moveTo(sx, sy - h); ctx.lineTo(sx, sy + h * .82); ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = "rgba(99,228,239,.56)";
+        ctx.setLineDash([4, 5]);
+        ctx.beginPath(); ctx.arc(feature.x, feature.y, r + 5, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+      } else if (feature.type === "wall") {
+        const r = feature.radius;
+        ctx.translate(feature.x, feature.y);
+        ctx.rotate(feature.angle || 0);
+        ctx.shadowColor = "#b38659";
+        ctx.shadowBlur = 7;
+        for (let i = 0; i < 5; i++) {
+          const segmentW = r * .39;
+          const x = (i - 2) * segmentW * .88;
+          const y = i % 2 ? -r * .13 : r * .12;
+          ctx.fillStyle = i % 2 ? "#514537" : "#66533e";
+          ctx.strokeStyle = "#b59a70";
+          ctx.lineWidth = 1.5;
+          ctx.fillRect(x - segmentW / 2, y - r * .2, segmentW, r * .4);
+          ctx.strokeRect(x - segmentW / 2, y - r * .2, segmentW, r * .4);
+          ctx.strokeStyle = "rgba(25,31,32,.8)";
+          ctx.beginPath(); ctx.moveTo(x - 3, y - r * .16); ctx.lineTo(x + 2, y + r * .14); ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = "rgba(236,197,122,.65)";
+        ctx.beginPath(); ctx.moveTo(-r * 1.2, r * .38); ctx.lineTo(r * 1.2, r * .38); ctx.stroke();
       } else {
         ctx.fillStyle = "#16252c";
         ctx.strokeStyle = "#74868b";
@@ -2781,8 +2973,7 @@ class Game {
       const side = Math.floor(Math.random() * 4);
       const edge = WORLD_W * TILE_SIZE;
       const boss = new Enemy(side === 1 ? edge : side === 3 ? 0 : randRange(0, edge), side === 2 ? edge : side === 0 ? 0 : randRange(0, edge), "boss");
-      boss.maxHp = Math.round(boss.maxHp * (1 + Math.floor(waveIndex / 5 - 1) * .18));
-      boss.hp = boss.maxHp;
+      boss.configureBoss(waveIndex);
       this.enemies.push(boss);
     }
     this.waveActive = true;
@@ -3694,6 +3885,55 @@ function starterDesignGrid(n) {
   if (mid > 0) grid[mid][mid - 1] = 1;
   if (mid < n - 1) grid[mid][mid + 1] = 1;
   return grid;
+}
+
+function createBossDesign(cycle = 1) {
+  const designs = [
+    {
+      name: "Aegis",
+      color: "#cc83f3",
+      traits: { hp: 1.28, damage: .9, speed: .9, cooldown: 1.05, slam: 1, size: 1 },
+      rows: ["....A....", "...AAA...", "..AAAAA..", ".AAAWAAA.", "AAAAWAAAA", ".AAAWAAA.", "..AAAAA..", "...AAA...", "....A...."],
+      sockets: { N: "shield", E: "weapon", S: "shield", W: "support" }
+    },
+    {
+      name: "Reaver",
+      color: "#ff816d",
+      traits: { hp: .88, damage: 1.05, speed: 1.35, cooldown: .78, slam: .9, size: 1 },
+      rows: ["....E....", "...EE....", "..EWW....", ".EWWWAA..", "EWWWAAA..", ".EWWWAA..", "..EWW....", "...EE....", "....E...."],
+      sockets: { N: "support", E: "weapon", S: "weapon", W: null }
+    },
+    {
+      name: "Siegebreaker",
+      color: "#e1a75f",
+      traits: { hp: 1.35, damage: 1.2, speed: .72, cooldown: 1.2, slam: 1.15, size: 1.15 },
+      rows: ["...AAA...", "..AAAAA..", "WWAAWAAWW", ".AAAWAAA.", "AAAAWAAAA", ".AAAWAAA.", "WWAAWAAWW", "..AAAAA..", "...AAA..."],
+      sockets: { N: "shield", E: "shield", S: "weapon", W: "shield" }
+    },
+    {
+      name: "Prism",
+      color: "#63dce1",
+      traits: { hp: 1.02, damage: 1.08, speed: 1.02, cooldown: .94, slam: 1.28, size: 1.02 },
+      rows: ["....S....", "...SSS...", "..SSWSS..", ".SSWWWSS.", "SSWWAWWSS", ".SSWWWSS.", "..SSWSS..", "...SSS...", "....S...."],
+      sockets: { N: "support", E: "weapon", S: "support", W: "weapon" }
+    },
+    {
+      name: "Leviathan",
+      color: "#e96f9f",
+      traits: { hp: 1.45, damage: 1.12, speed: .85, cooldown: 1.05, slam: 1.18, size: 1.28 },
+      rows: ["W...A...W", "WW..A..WW", ".WW.A.WW.", "..WWAWW..", "AAAAWAAAA", "..WWAWW..", ".WW.A.WW.", "WW..A..WW", "W...A...W"],
+      sockets: { N: "weapon", E: "support", S: "weapon", W: "support" }
+    }
+  ];
+  const profile = designs[(Math.max(1, cycle) - 1) % designs.length];
+  const roles = { A: 1, W: 2, S: 3, E: 4 };
+  return {
+    name: profile.name,
+    color: profile.color,
+    traits: { ...profile.traits },
+    grid: profile.rows.map((row) => [...row].map((cell) => roles[cell] || 0)),
+    modules: { ...emptyModules(), ...profile.sockets }
+  };
 }
 
 function drawGridShape(ctx, grid, cellPx, scale, modules = emptyModules()) {
