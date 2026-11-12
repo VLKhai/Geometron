@@ -81,6 +81,8 @@
     #assignBlueprintBtn { color: #a9f5d9; border-color: rgba(108,224,186,.25); }
     #moveCommandBtn { color: #b7f2ff; border-color: rgba(116,217,244,.3); }
     #moveCommandBtn.active { color: #e8fbff; border-color: rgba(116,217,244,.78); background: rgba(35,101,119,.55); }
+    #toggleProductionBtn { min-width: 42px; color: #ffd875; border-color: rgba(230,189,112,.38); font: 700 9px var(--mono); }
+    #toggleProductionBtn.active { color: #b8ffe9; border-color: rgba(108,224,186,.72); background: rgba(31,95,76,.42); }
     #shapePanel { position: relative; grid-column: 3; grid-row: 3; justify-self: end; width: 100%; max-width: 330px; }
     .icon-legend { position: relative; margin-left: auto; }
     .icon-legend summary { width: 28px; height: 28px; display: grid; place-items: center; list-style: none; border: 1px solid rgba(116,217,244,.3); border-radius: 8px; background: rgba(23,48,58,.72); color: var(--cyan); cursor: pointer; font: 600 14px var(--sans); }
@@ -407,7 +409,7 @@
     <div class="panel" id="selectedPanel">
       <div class="section-heading"><div><div class="eyebrow">⌖ SELECTED</div><div id="selectedTitle">—</div></div><div class="section-icon">⌖</div></div>
       <div id="infoText">⌖ Choose a unit or structure</div>
-      <div class="row"><button class="icon-only" id="assignBlueprintBtn" title="Apply current Workshop design" aria-label="Apply current Workshop design">⇪</button><button class="icon-only" id="moveCommandBtn" style="display:none;" title="Choose a move destination" aria-label="Move selected units">➤</button></div>
+      <div class="row"><button class="icon-only" id="assignBlueprintBtn" title="Apply current Workshop design" aria-label="Apply current Workshop design">⇪</button><button class="icon-only" id="toggleProductionBtn" style="display:none;" title="Pause production" aria-label="Pause production">Ⅱ</button><button class="icon-only" id="moveCommandBtn" style="display:none;" title="Choose a move destination" aria-label="Move selected units">➤</button></div>
     </div>
     <div class="panel" id="helpPanel"><span title="Click to select">⌖ SELECT</span> · <span title="Drag to select a squad">⇧ DRAG</span> · <span title="Right click to scrap">⊖ SCRAP</span> · <span title="Click to build">⊕ BUILD</span></div>
     <div class="panel" id="shapePanel">

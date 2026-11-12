@@ -253,21 +253,20 @@ class Unit extends Entity {
   update(dt, game) {
     this.attackTimer -= dt;
     const target = game.findNearestEnemy(this.x, this.y);
+    let mx = 0;
+    let my = 0;
     if (this.controlled) {
-      let mx = 0;
-      let my = 0;
       if (game.keys.steerUp) my -= 1;
       if (game.keys.steerDown) my += 1;
       if (game.keys.steerLeft) mx -= 1;
       if (game.keys.steerRight) mx += 1;
-      if (mx !== 0 || my !== 0) {
-        const m = Math.hypot(mx, my);
-        this.x += (mx / m) * this.speed * dt;
-        this.y += (my / m) * this.speed * dt;
-      } else if (target) {
-        const d = this.distTo(target);
-        if (d > this.range * 0.8) this.moveToward(target.x, target.y, dt);
-      }
+    }
+
+    if (mx !== 0 || my !== 0) {
+      this.commandTarget = null;
+      const m = Math.hypot(mx, my);
+      this.x += (mx / m) * this.speed * dt;
+      this.y += (my / m) * this.speed * dt;
     } else if (this.commandTarget) {
       const dx = this.commandTarget.x - this.x;
       const dy = this.commandTarget.y - this.y;
@@ -279,7 +278,7 @@ class Unit extends Entity {
       }
     } else if (target) {
       const d = this.distTo(target);
-      if (d > this.range * 0.85) this.moveToward(target.x, target.y, dt);
+      if (d > this.range * (this.controlled ? 0.8 : 0.85)) this.moveToward(target.x, target.y, dt);
     }
 
     this.x = Math.max(0, Math.min(WORLD_W * TILE_SIZE, this.x));
@@ -323,9 +322,11 @@ class Turret extends Entity {
     this.armor = this.stats.armor;
     this.shotCostCopper = 1;
     this.speed = 0;
+    this.enabled = true;
   }
 
   update(dt, game) {
+    if (!this.enabled) return;
     this.attackTimer -= dt;
     const target = game.findNearestEnemy(this.x, this.y);
     if (!target) return;
@@ -339,8 +340,9 @@ class Turret extends Entity {
   render(ctx) {
     ctx.save();
     ctx.translate(this.x, this.y);
+    ctx.globalAlpha = this.enabled ? 1 : 0.42;
     ctx.shadowColor = "#86e9ff";
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = this.enabled ? 12 : 3;
     ctx.fillStyle = "#67b9dd";
     drawGridShape(ctx, this.blueprint, 4, 1.1, this.modules);
     ctx.shadowBlur = 0;
@@ -563,6 +565,7 @@ class Structure extends Entity {
     this.hp = type === "MiniCore" ? 180 : 220;
     this.maxHp = this.hp;
     this.running = false;
+    this.enabled = true;
     this.batchPaid = false;
     this.resourceType = null;
     this.resourceRate = 0;
@@ -573,6 +576,11 @@ class Structure extends Entity {
       if (this.resourceType) {
         game.resources[this.resourceType] += this.resourceRate * game.getResourceRateMultiplier(this.x, this.y) * dt;
       }
+      return;
+    }
+
+    if (!this.enabled) {
+      this.running = false;
       return;
     }
 
@@ -612,6 +620,7 @@ class Structure extends Entity {
     ctx.save();
     ctx.translate(this.x, this.y);
     const color = this.type === "Assembler" ? "#63d2b2" : this.type === "TurretFoundry" ? "#79b9ed" : this.type === "VehicleBay" ? "#e2bb74" : "#56c9eb";
+    ctx.globalAlpha = this.enabled === false ? 0.42 : 1;
     ctx.shadowColor = color;
     ctx.shadowBlur = this.running ? 13 : 7;
     ctx.fillStyle = "#102b34";
@@ -1165,6 +1174,14 @@ class Game {
         this.syncButtons();
         if (this.buildMode === "MiniCore") this.notify("⛏ Tap a glowing deposit");
       });
+    });
+
+    document.getElementById("toggleProductionBtn").addEventListener("click", () => {
+      const structure = this.selectedStructure;
+      if (!structure || !["Assembler", "TurretFoundry", "VehicleBay", "Turret"].includes(structure.type)) return;
+      structure.enabled = structure.enabled === false;
+      if (structure.type !== "Turret") structure.running = false;
+      this.notify(`${structure.type} ${structure.enabled ? "enabled" : "disabled"}`);
     });
 
     document.getElementById("moveCommandBtn").addEventListener("click", () => {
@@ -1986,6 +2003,7 @@ class Game {
         maxHp: s.maxHp,
         dead: s.dead,
         productionProgress: s.productionProgress,
+        enabled: s.enabled !== false,
         batchPaid: s.batchPaid,
         resourceType: s.resourceType,
         resourceRate: s.resourceRate,
@@ -1999,6 +2017,7 @@ class Game {
         maxHp: u.maxHp,
         dead: u.dead,
         attackTimer: u.attackTimer,
+        commandTarget: u.commandTarget ? { ...u.commandTarget } : null,
         blueprint: cloneBlueprint({ grid: u.blueprint, modules: u.modules })
       })),
       turrets: this.turrets.map((t) => ({
@@ -2008,6 +2027,7 @@ class Game {
         maxHp: t.maxHp,
         dead: t.dead,
         attackTimer: t.attackTimer,
+        enabled: t.enabled !== false,
         blueprint: cloneBlueprint({ grid: t.blueprint, modules: t.modules })
       })),
       enemies: this.enemies.map((e) => ({
@@ -2087,6 +2107,7 @@ class Game {
       structure.maxHp = s.maxHp;
       structure.dead = s.dead;
       structure.productionProgress = s.productionProgress || 0;
+      structure.enabled = s.enabled !== false;
       structure.batchPaid = !!s.batchPaid;
       structure.resourceType = s.resourceType;
       structure.resourceRate = s.resourceRate;
@@ -2100,6 +2121,9 @@ class Game {
       unit.maxHp = u.maxHp;
       unit.dead = u.dead;
       unit.attackTimer = u.attackTimer || 0;
+      unit.commandTarget = u.commandTarget && Number.isFinite(u.commandTarget.x) && Number.isFinite(u.commandTarget.y)
+        ? { x: u.commandTarget.x, y: u.commandTarget.y }
+        : null;
       return unit;
     });
 
@@ -2109,6 +2133,7 @@ class Game {
       turret.maxHp = t.maxHp;
       turret.dead = t.dead;
       turret.attackTimer = t.attackTimer || 0;
+      turret.enabled = t.enabled !== false;
       return turret;
     });
 
@@ -3111,7 +3136,9 @@ class Game {
     const selTitle = document.getElementById("selectedTitle");
     const info = document.getElementById("infoText");
     const assignBtn = document.getElementById("assignBlueprintBtn");
+    const toggleProductionBtn = document.getElementById("toggleProductionBtn");
     const moveBtn = document.getElementById("moveCommandBtn");
+    toggleProductionBtn.style.display = "none";
     moveBtn.style.display = this.selectedUnits.length > 0 ? "inline-grid" : "none";
     moveBtn.classList.toggle("active", this.moveCommandMode);
     moveBtn.title = this.moveCommandMode ? "Tap a destination or cancel move" : "Move selected units";
@@ -3129,13 +3156,29 @@ class Game {
         info.textContent = `⌖ RELAY\n♥ ${Math.floor(this.mainCore.hp)}/${Math.floor(this.mainCore.maxHp)} · HOLD`;
       } else if (structure.type === "Turret") {
         const stats = computeStatsFromGrid(structure.blueprint, structure.modules);
-        info.textContent = `✣ AUTO · ♥ ${Math.floor(structure.hp)}/${Math.floor(structure.maxHp)}\n⚔ ${stats.damage.toFixed(0)} · ◎ ${structure.range.toFixed(0)}\n↘ ${structure.shotCostCopper} Cu/shot`;
+        const enabled = structure.enabled !== false;
+        info.textContent = `✣ ${enabled ? "AUTO" : "OFF"} · ♥ ${Math.floor(structure.hp)}/${Math.floor(structure.maxHp)}\n⚔ ${stats.damage.toFixed(0)} · ◎ ${structure.range.toFixed(0)}\n↘ ${structure.shotCostCopper} Cu/shot`;
+        toggleProductionBtn.style.display = "inline-grid";
+        toggleProductionBtn.textContent = enabled ? "OFF" : "ON";
+        toggleProductionBtn.classList.toggle("active", enabled);
+        toggleProductionBtn.title = enabled ? "Turn turret off" : "Turn turret on";
+        toggleProductionBtn.setAttribute("aria-label", enabled ? "Turn turret off" : "Turn turret on");
       } else {
         const stats = computeStatsFromGrid(structure.blueprint.grid, structure.blueprint.modules);
         const duration = 4.5 + stats.cellCount * 1.6;
         const cost = this.getProductionCost(structure.blueprint.grid, structure.blueprint.modules);
-        const state = structure.running ? `↻ ${Math.round(structure.productionProgress / duration * 100)}%` : structure.batchPaid ? "◷ QUEUED" : "Ⅱ IDLE";
+        const progress = Math.round(structure.productionProgress / duration * 100);
+        const isFactory = ["Assembler", "TurretFoundry", "VehicleBay"].includes(structure.type);
+        const enabled = structure.enabled !== false;
+        const state = !enabled ? `Ⅱ OFF${structure.batchPaid ? ` · ${progress}%` : ""}` : structure.running ? `↻ ${progress}%` : structure.batchPaid ? "◷ QUEUED" : "Ⅱ IDLE";
         info.textContent = `♥ ${Math.floor(structure.hp)}/${Math.floor(structure.maxHp)} · ${state}\n▦ ${stats.cellCount} · ⚔ ${stats.damage.toFixed(0)} · ◎ ${stats.range.toFixed(0)}\n◇ ${Object.entries(structure.modules || {}).filter(([, type]) => type).length} · ◉ ${cost.copper} · ⬟ ${cost.coal} · ◆ ${cost.gold}`;
+        if (isFactory) {
+          toggleProductionBtn.style.display = "inline-grid";
+          toggleProductionBtn.textContent = enabled ? "OFF" : "ON";
+          toggleProductionBtn.classList.toggle("active", enabled);
+          toggleProductionBtn.title = enabled ? "Turn production off" : "Turn production on";
+          toggleProductionBtn.setAttribute("aria-label", enabled ? "Turn production off" : "Turn production on");
+        }
       }
     } else if (this.selectedNode) {
       const node = this.selectedNode;
